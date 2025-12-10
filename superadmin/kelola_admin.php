@@ -322,6 +322,7 @@ if (isset($_GET['status'])) {
             <a href="kelola_admin.php" class="active">
                 <i class="fas fa-users-cog"></i> Kelola Admin
             </a>
+            <a href="kelola_mahasiswa.php" class="active"><i class="fas fa-user-graduate"></i> Kelola Mahasiswa</a>
             <a href="kelola_ukm.php">
                 <i class="fas fa-sitemap"></i> Kelola UKM
             </a>

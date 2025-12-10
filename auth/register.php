@@ -270,7 +270,7 @@ if ($_POST) {
                         </div>
                         
                         <div class="text-center mt-3">
-                            <a href="index.php" class="text-decoration-none">
+                            <a href="../index.php" class="text-decoration-none">
                                 <i class="fas fa-arrow-left"></i> Kembali ke Beranda
                             </a>
                         </div>

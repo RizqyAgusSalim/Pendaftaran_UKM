@@ -77,6 +77,9 @@ $total_kategori = $db->query("SELECT COUNT(*) FROM kategori_ukm")->fetchColumn()
             <a href="kelola_admin.php">
                 <i class="fas fa-users-cog"></i> Kelola Admin
             </a>
+            <a href="kelola_mahasiswa.php">
+                <i class="fas fa-user-graduate"></i> Kelola Mahasiswa
+            </a>
             <a href="kelola_ukm.php">
                 <i class="fas fa-sitemap"></i> Kelola UKM
             </a>

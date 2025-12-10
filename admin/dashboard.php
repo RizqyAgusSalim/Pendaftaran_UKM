@@ -1,9 +1,9 @@
 <?php
-// admin/dashboard.php
+// admin/dashboard.php — KHUSUS ADMIN UKM (DIPERBAIKI UNTUK SUPERADMIN)
 require_once '../config/database.php';
 require_once '../config/functions.php';
 
-// Cek sesi login dan hak akses admin
+// Pastikan sudah login dan punya akses admin
 if (!isLoggedIn() || !isAdmin()) {
     redirect('../auth/login.php');
 }
@@ -11,74 +11,87 @@ if (!isLoggedIn() || !isAdmin()) {
 $database = new Database();
 $db = $database->getConnection();
 
-// ----------------------------------------------------
-// I. Otorisasi: Tentukan Scope Admin 
-// ----------------------------------------------------
-// Asumsi: 'ukm_id_dikelola' disimpan di sesi saat login sebagai Admin UKM.
-$is_ukm_admin = isset($_SESSION['ukm_id_dikelola']) && $_SESSION['ukm_id_dikelola'] !== null;
-$ukm_id_admin = $is_ukm_admin ? $_SESSION['ukm_id_dikelola'] : null;
+// --- ✅ PERBAIKAN UTAMA: Dukungan untuk Superadmin ---
+$nama_ukm = "UKM Anda";
+$ukm_id = null;
 
-// Tentukan klausa WHERE dasar untuk memfilter pendaftaran
-$where_pendaftaran = $is_ukm_admin ? "WHERE ukm_id = :ukm_id_admin" : "";
-$where_pendaftaran_param = $is_ukm_admin ? [':ukm_id_admin' => $ukm_id_admin] : [];
+if ($_SESSION['user_role'] === 'superadmin') {
+    // Superadmin: tidak perlu ukm_id, lihat semua data
+    $nama_ukm = "Semua UKM (Mode Admin - Super Admin)";
+} else {
+    // Admin biasa: harus punya ukm_id
+    if (!isset($_SESSION['ukm_id']) || $_SESSION['ukm_id'] <= 0) {
+        showAlert('Akses ditolak: Anda bukan admin UKM.', 'danger');
+        redirect('../auth/logout.php');
+    }
+    $ukm_id = (int)$_SESSION['ukm_id'];
+    
+    // Ambil nama UKM untuk admin biasa
+    $stmt_ukm = $db->prepare("SELECT nama_ukm FROM ukm WHERE id = :ukm_id");
+    $stmt_ukm->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
+    $stmt_ukm->execute();
+    $nama_ukm = $stmt_ukm->fetchColumn() ?? "UKM Anda";
+}
 
 // ----------------------------------------------------
-// II. Statistik (Dibatasi)
+// STATISTIK
 // ----------------------------------------------------
 $stats = [];
 
-// Total UKM
-if ($is_ukm_admin) {
-    // Admin UKM hanya melihat 1 UKM (UKM yang dia kelola)
-    $stats['total_ukm'] = 1;
-    // Ambil nama UKM yang dikelola untuk display
-    $query_nama_ukm = "SELECT nama_ukm FROM ukm WHERE id = :ukm_id_admin";
-    $stmt_nama_ukm = $db->prepare($query_nama_ukm);
-    $stmt_nama_ukm->bindParam(':ukm_id_admin', $ukm_id_admin, PDO::PARAM_INT);
-    $stmt_nama_ukm->execute();
-    $nama_ukm_admin = $stmt_nama_ukm->fetchColumn() ?? "UKM Tidak Ditemukan";
+// Total UKM (semua)
+$stats['total_ukm'] = $db->query("SELECT COUNT(*) FROM ukm")->fetchColumn();
 
-} else {
-    // Super Admin melihat semua
-    $stats['total_ukm'] = $db->query("SELECT COUNT(*) FROM ukm")->fetchColumn();
-    $nama_ukm_admin = "";
-}
-
-// Total Mahasiswa (Diasumsikan tidak dibatasi per UKM)
+// Total mahasiswa (semua)
 $stats['total_mahasiswa'] = $db->query("SELECT COUNT(*) FROM mahasiswa")->fetchColumn();
 
-// Total Pendaftaran (Dibatasi)
-$query_total_pendaftaran = "SELECT COUNT(*) FROM pendaftaran {$where_pendaftaran}";
-$stmt_total_pendaftaran = $db->prepare($query_total_pendaftaran);
-$stmt_total_pendaftaran->execute($where_pendaftaran_param);
-$stats['total_pendaftaran'] = $stmt_total_pendaftaran->fetchColumn();
+// Total pendaftaran
+if ($ukm_id !== null) {
+    $stmt = $db->prepare("SELECT COUNT(*) FROM pendaftaran WHERE ukm_id = :ukm_id");
+    $stmt->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
+    $stmt->execute();
+    $stats['total_pendaftaran'] = $stmt->fetchColumn();
 
-// Pending Pendaftaran (Dibatasi)
-// Catatan: Jika $is_ukm_admin, $where_pendaftaran sudah berisi WHERE, jadi gunakan AND
-$query_pending = "SELECT COUNT(*) FROM pendaftaran 
-                  " . ($is_ukm_admin ? "WHERE ukm_id = :ukm_id_admin AND status = 'pending'" : "WHERE status = 'pending'");
-$stmt_pending = $db->prepare($query_pending);
-$stmt_pending->execute($where_pendaftaran_param);
-$stats['pending_pendaftaran'] = $stmt_pending->fetchColumn();
-
+    $stmt2 = $db->prepare("SELECT COUNT(*) FROM pendaftaran WHERE ukm_id = :ukm_id AND status = 'pending'");
+    $stmt2->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
+    $stmt2->execute();
+    $stats['pending_pendaftaran'] = $stmt2->fetchColumn();
+} else {
+    // Superadmin: lihat semua
+    $stats['total_pendaftaran'] = $db->query("SELECT COUNT(*) FROM pendaftaran")->fetchColumn();
+    $stats['pending_pendaftaran'] = $db->query("SELECT COUNT(*) FROM pendaftaran WHERE status = 'pending'")->fetchColumn();
+}
 
 // ----------------------------------------------------
-// III. Pendaftaran terbaru (Dibatasi)
+// PENDAFTARAN TERBARU
 // ----------------------------------------------------
-$query = "
-    SELECT 
-        p.id, p.status, p.created_at, m.nama, m.nim, u.nama_ukm 
-    FROM pendaftaran p 
-    JOIN mahasiswa m ON p.mahasiswa_id = m.id 
-    JOIN ukm u ON p.ukm_id = u.id 
-    " . ($is_ukm_admin ? "WHERE p.ukm_id = :ukm_id_admin" : "") . "
-    ORDER BY p.created_at DESC LIMIT 10
-";
-$stmt = $db->prepare($query);
-$stmt->execute($where_pendaftaran_param);
+if ($ukm_id !== null) {
+    $query = "
+        SELECT 
+            p.id, p.status, p.created_at, m.nama, m.nim, u.nama_ukm 
+        FROM pendaftaran p 
+        JOIN mahasiswa m ON p.mahasiswa_id = m.id 
+        JOIN ukm u ON p.ukm_id = u.id 
+        WHERE p.ukm_id = :ukm_id
+        ORDER BY p.created_at DESC LIMIT 10
+    ";
+    $stmt = $db->prepare($query);
+    $stmt->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
+} else {
+    // Superadmin: lihat semua UKM
+    $query = "
+        SELECT 
+            p.id, p.status, p.created_at, m.nama, m.nim, u.nama_ukm 
+        FROM pendaftaran p 
+        JOIN mahasiswa m ON p.mahasiswa_id = m.id 
+        JOIN ukm u ON p.ukm_id = u.id 
+        ORDER BY p.created_at DESC LIMIT 10
+    ";
+    $stmt = $db->prepare($query);
+}
+$stmt->execute();
 $recent_pendaftaran = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Fungsi Helper untuk Badge Status (Disarankan pindah ke functions.php)
+// Fungsi Helper untuk Badge Status
 function getStatusBadge(string $status): string
 {
     $status = strtolower($status);
@@ -96,8 +109,9 @@ function getStatusBadge(string $status): string
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <meta name="timezone" content="Asia/Jakarta">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Admin - Sistem UKM Polinela</title>
+    <title>Dashboard Admin - <?= htmlspecialchars($nama_ukm) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -143,7 +157,6 @@ function getStatusBadge(string $status): string
             overflow: hidden;
             box-shadow: 0 3px 15px rgba(0,0,0,0.1);
         }
-        /* Penyesuaian CSS untuk Badge */
         .badge-pending { background: #ffc107 !important; color: #212529 !important; }
         .badge-diterima { background: #28a745 !important; color: #fff !important; }
         .badge-ditolak { background: #dc3545 !important; color: #fff !important; }
@@ -195,11 +208,7 @@ function getStatusBadge(string $status): string
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <div>
                             <h2>Dashboard Admin</h2>
-                            <?php if ($is_ukm_admin): ?>
-                                <p class="text-muted mb-0">Selamat datang, Admin **<?= htmlspecialchars($nama_ukm_admin) ?>**!</p>
-                            <?php else: ?>
-                                <p class="text-muted mb-0">Selamat datang, <?= $_SESSION['nama'] ?>!</p>
-                            <?php endif; ?>
+                            <p class="text-muted mb-0">Selamat datang, <?= ($_SESSION['user_role'] === 'superadmin') ? '<strong>Super Admin</strong>' : 'Admin'; ?> <strong><?= htmlspecialchars($nama_ukm) ?></strong>!</p>
                         </div>
                         <div class="text-end">
                             <small class="text-muted">
@@ -216,11 +225,11 @@ function getStatusBadge(string $status): string
                                 <div class="card-body">
                                     <div class="d-flex align-items-center">
                                         <div class="stat-icon" style="background: #3498db;">
-                                            <i class="fas fa-users"></i>
+                                            <i class="fas fa-building"></i>
                                         </div>
                                         <div class="ms-3">
                                             <h3 class="mb-0"><?= $stats['total_ukm'] ?></h3>
-                                            <p class="text-muted mb-0"><?= $is_ukm_admin ? 'UKM Dikelola' : 'Total UKM' ?></p>
+                                            <p class="text-muted mb-0">Total UKM</p>
                                         </div>
                                     </div>
                                 </div>
@@ -236,7 +245,7 @@ function getStatusBadge(string $status): string
                                         </div>
                                         <div class="ms-3">
                                             <h3 class="mb-0"><?= $stats['total_mahasiswa'] ?></h3>
-                                            <p class="text-muted mb-0">Mahasiswa Polinela</p>
+                                            <p class="text-muted mb-0">Mahasiswa Terdaftar</p>
                                         </div>
                                     </div>
                                 </div>
@@ -276,6 +285,7 @@ function getStatusBadge(string $status): string
                         </div>
                     </div>
 
+                    <!-- ✅ QUICK ACTIONS + TOMBOL KEMBALI SUPERADMIN -->
                     <div class="row mb-4">
                         <div class="col-12">
                             <div class="card border-0 shadow-sm">
@@ -286,31 +296,30 @@ function getStatusBadge(string $status): string
                                 </div>
                                 <div class="card-body">
                                     <div class="row">
-                                        <div class="col-md-3 mb-2">
-                                            <a href="kelola_ukm.php?action=add" class="btn btn-primary w-100">
-                                                <i class="fas fa-plus"></i> Tambah UKM
-                                            </a>
-                                        </div>
-                                        <div class="col-md-3 mb-2">
+                                        <div class="col-md-4 mb-2">
                                             <a href="kelola_kategori.php?action=add" class="btn btn-success w-100">
                                                 <i class="fas fa-tag"></i> Tambah Kategori
                                             </a>
                                         </div>
-                                        <div class="col-md-3 mb-2">
+                                        <div class="col-md-4 mb-2">
                                             <a href="kelola_pendaftaran.php" class="btn btn-warning w-100">
                                                 <i class="fas fa-check-circle"></i> Review Pendaftaran
                                             </a>
                                         </div>
-                                        <div class="col-md-3 mb-2">
+                                        <div class="col-md-4 mb-2">
                                             <a href="laporan.php" class="btn btn-info w-100">
                                                 <i class="fas fa-download"></i> Export Laporan
                                             </a>
                                         </div>
-                                        <div class="col-md-3 mb-2">
-                                            <a href="kelola_mahasiswa.php?action=add" class="btn btn-secondary w-100">
-                                                <i class="fas fa-user-plus"></i> Tambah Mahasiswa 
-                                            </a>
-                                        </div>
+
+                                        <!-- ✅ TOMBOL KEMBALI KE SUPER ADMIN (Hanya untuk Superadmin) -->
+                                        <?php if ($_SESSION['user_role'] === 'superadmin'): ?>
+                                            <div class="col-12 mt-3">
+                                                <a href="../superadmin/dashboard.php" class="btn btn-outline-dark w-100">
+                                                    <i class="fas fa-arrow-left"></i> Kembali ke Dashboard Super Admin
+                                                </a>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
@@ -355,17 +364,17 @@ function getStatusBadge(string $status): string
                                                             <td>
                                                                 <div class="d-flex align-items-center">
                                                                     <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 35px; height: 35px; font-size: 0.8rem;">
-                                                                        <?= strtoupper(substr($pendaftaran['nama'], 0, 2)) ?>
+                                                                        <?= strtoupper(substr(htmlspecialchars($pendaftaran['nama']), 0, 2)) ?>
                                                                     </div>
                                                                     <div class="ms-2">
-                                                                        <div class="fw-bold"><?= $pendaftaran['nama'] ?></div>
+                                                                        <div class="fw-bold"><?= htmlspecialchars($pendaftaran['nama']) ?></div>
                                                                     </div>
                                                                 </div>
                                                             </td>
                                                             <td>
-                                                                <span class="badge bg-light text-dark"><?= $pendaftaran['nim'] ?></span>
+                                                                <span class="badge bg-light text-dark"><?= htmlspecialchars($pendaftaran['nim']) ?></span>
                                                             </td>
-                                                            <td><?= $pendaftaran['nama_ukm'] ?></td>
+                                                            <td><?= htmlspecialchars($pendaftaran['nama_ukm']) ?></td>
                                                             <td>
                                                                 <small class="text-muted">
                                                                     <?= formatTanggal($pendaftaran['created_at']) ?>
@@ -380,10 +389,12 @@ function getStatusBadge(string $status): string
                                                                         <i class="fas fa-eye"></i>
                                                                     </a>
                                                                     <?php if ($pendaftaran['status'] == 'pending'): ?>
-                                                                        <a href="kelola_pendaftaran.php?action=approve&id=<?= $pendaftaran['id'] ?>" class="btn btn-outline-success" title="Terima">
+                                                                        <a href="kelola_pendaftaran.php?action=approve&id=<?= $pendaftaran['id'] ?>" class="btn btn-outline-success" title="Terima"
+                                                                           onclick="return confirm('Terima pendaftaran dari <?= htmlspecialchars(addslashes($pendaftaran['nama'])) ?>?')">
                                                                             <i class="fas fa-check"></i>
                                                                         </a>
-                                                                        <a href="kelola_pendaftaran.php?action=reject&id=<?= $pendaftaran['id'] ?>" class="btn btn-outline-danger" title="Tolak">
+                                                                        <a href="kelola_pendaftaran.php?action=reject&id=<?= $pendaftaran['id'] ?>" class="btn btn-outline-danger" title="Tolak"
+                                                                            onclick="return confirm('Tolak pendaftaran dari <?= htmlspecialchars(addslashes($pendaftaran['nama'])) ?>?')">
                                                                             <i class="fas fa-times"></i>
                                                                         </a>
                                                                     <?php endif; ?>
@@ -405,21 +416,5 @@ function getStatusBadge(string $status): string
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Auto refresh statistics every 30 seconds
-        setInterval(function() {
-            location.reload();
-        }, 30000);
-
-        // Confirmation for action buttons
-        document.querySelectorAll('a[href*="approve"], a[href*="reject"]').forEach(function(link) {
-            link.addEventListener('click', function(e) {
-                const action = this.href.includes('approve') ? 'menerima' : 'menolak';
-                if (!confirm(`Apakah Anda yakin ingin ${action} pendaftaran ini?`)) {
-                    e.preventDefault();
-                }
-            });
-        });
-    </script>
 </body>
 </html>

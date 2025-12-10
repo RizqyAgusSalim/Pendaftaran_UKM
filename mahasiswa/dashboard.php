@@ -1,10 +1,9 @@
 <?php
-// Dashboard Mahasiswa - versi diperbaiki
+// Dashboard Mahasiswa - versi FINAL dengan desain UKM utuh
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// Mulai session (penting)
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -12,10 +11,8 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once '../config/database.php';
 require_once '../config/functions.php';
 
-// Pastikan user login dan berperan sebagai mahasiswa
 if (!function_exists('isLoggedIn') || !function_exists('isMahasiswa')) {
-    // Jika fungsi tidak ditemukan: hentikan agar tidak lanjut
-    error_log('Fungsi isLoggedIn/isMahasiswa tidak ditemukan di functions.php');
+    error_log('Fungsi tidak ditemukan');
     header('Location: ../auth/login.php');
     exit;
 }
@@ -29,125 +26,86 @@ $database = new Database();
 $db = $database->getConnection();
 
 if ($db === null) {
-    // Jika koneksi gagal, hentikan dan tampilkan pesan (untuk development)
     die("Error: Tidak dapat terhubung ke database");
 }
 
-$mahasiswa_id = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
+$mahasiswa_id = (int)($_SESSION['user_id'] ?? 0);
 
-// Inisialisasi
+// Ambil data mahasiswa
 $mahasiswa = null;
-$pendaftaran_saya = [];
-$ukm_tersedia = [];
-$notifikasi = [];
-$total_pendaftaran = 0;
-$pending = 0;
-$diterima = 0;
-$ditolak = 0;
-
-try {
-    // Ambil data mahasiswa bila ada
-    if ($mahasiswa_id > 0) {
-        $sql = "SELECT * FROM mahasiswa WHERE id = ?";
-        $stmt = $db->prepare($sql);
-        $stmt->execute([$mahasiswa_id]);
-        $mahasiswa = $stmt->fetch(PDO::FETCH_ASSOC);
-    }
-
-    // Jika tidak ditemukan mahasiswa di DB, buat dummy dari session (development friendly)
-    if (!$mahasiswa || empty($mahasiswa)) {
-        $mahasiswa = [
-            'id' => $mahasiswa_id,
-            'nama' => isset($_SESSION['nama']) ? $_SESSION['nama'] : 'Test Mahasiswa',
-            'nim' => isset($_SESSION['nim']) ? $_SESSION['nim'] : '2024000000',
-            'jurusan' => 'Teknik Informatika',
-            'angkatan' => '2024',
-            'email' => 'test@student.polinela.ac.id',
-            'no_telepon' => '08123456789',
-            'alamat' => 'Bandar Lampung'
-        ];
-    }
-
-    // Safety defaults
-    $mahasiswa['nama'] = $mahasiswa['nama'] ?? 'Nama Tidak Diketahui';
-    $mahasiswa['nim'] = $mahasiswa['nim'] ?? 'NIM Tidak Diketahui';
-    $mahasiswa['jurusan'] = $mahasiswa['jurusan'] ?? 'Jurusan Tidak Diketahui';
-    $mahasiswa['angkatan'] = $mahasiswa['angkatan'] ?? date('Y');
-
-    // Ambil pendaftaran mahasiswa
-    $sql = "SELECT p.*, u.nama_ukm, u.deskripsi, k.nama_kategori
-            FROM pendaftaran p
-            JOIN ukm u ON p.ukm_id = u.id
-            LEFT JOIN kategori_ukm k ON u.kategori_id = k.id
-            WHERE p.mahasiswa_id = ?
-            ORDER BY COALESCE(p.created_at, p.updated_at, '') DESC";
-    $stmt = $db->prepare($sql);
+if ($mahasiswa_id > 0) {
+    $stmt = $db->prepare("SELECT * FROM mahasiswa WHERE id = ?");
     $stmt->execute([$mahasiswa_id]);
-    $pendaftaran_saya = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $mahasiswa = $stmt->fetch(PDO::FETCH_ASSOC);
+}
 
-    // Statistik
-    $total_pendaftaran = count($pendaftaran_saya);
-    $pending = $diterima = $ditolak = 0;
-    foreach ($pendaftaran_saya as $p) {
-        $status = strtolower(trim((string)($p['status'] ?? '')));
-        switch ($status) {
-            case 'pending': $pending++; break;
-            case 'diterima': $diterima++; break;
-            case 'ditolak': $ditolak++; break;
-        }
-    }
+if (!$mahasiswa) {
+    header('Location: ../auth/logout.php');
+    exit;
+}
 
-    // Ambil UKM tersedia: hitung total pendaftar per UKM menggunakan COUNT DISTINCT
-    // dan cek apakah user sudah mendaftar di setiap UKM
-    $sql = "SELECT u.id, u.nama_ukm, u.deskripsi, k.nama_kategori,
-                   COUNT(DISTINCT p.id) AS total_pendaftar,
-                   CASE WHEN EXISTS(
-                       SELECT 1 FROM pendaftaran pu WHERE pu.ukm_id = u.id AND pu.mahasiswa_id = ?
-                   ) THEN 1 ELSE 0 END AS sudah_daftar
-            FROM ukm u
-            LEFT JOIN kategori_ukm k ON u.kategori_id = k.id
-            LEFT JOIN pendaftaran p ON u.id = p.ukm_id
-            WHERE u.status = 'aktif'
-            GROUP BY u.id, u.nama_ukm, u.deskripsi, k.nama_kategori
-            ORDER BY u.nama_ukm
-            LIMIT 6";
-    $stmt = $db->prepare($sql);
-    $stmt->execute([$mahasiswa_id]);
-    $ukm_tersedia = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+// Ambil pendaftaran dengan status_keanggotaan
+$sql = "
+    SELECT 
+        p.id AS pendaftaran_id,
+        p.status,
+        p.status_keanggotaan,
+        p.created_at,
+        u.nama_ukm,
+        k.nama_kategori
+    FROM pendaftaran p
+    JOIN ukm u ON p.ukm_id = u.id
+    LEFT JOIN kategori_ukm k ON u.kategori_id = k.id
+    WHERE p.mahasiswa_id = ?
+    ORDER BY p.created_at DESC
+";
+$stmt = $db->prepare($sql);
+$stmt->execute([$mahasiswa_id]);
+$pendaftaran_saya = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-    // Normalisasi data UKM
-    foreach ($ukm_tersedia as &$ukm) {
-        $ukm['nama_ukm'] = $ukm['nama_ukm'] ?? 'UKM Tidak Diketahui';
-        $ukm['nama_kategori'] = $ukm['nama_kategori'] ?? 'Kategori Tidak Diketahui';
-        $ukm['deskripsi'] = $ukm['deskripsi'] ?? 'Tidak ada deskripsi';
-        $ukm['total_pendaftar'] = isset($ukm['total_pendaftar']) ? (int)$ukm['total_pendaftar'] : 0;
-        $ukm['sudah_daftar'] = isset($ukm['sudah_daftar']) ? (int)$ukm['sudah_daftar'] : 0;
-    }
-    unset($ukm);
-
-    // Ambil notifikasi (pemberitahuan jika status sudah berubah, bukan pending)
-    $sql = "SELECT p.*, u.nama_ukm
-            FROM pendaftaran p
-            JOIN ukm u ON p.ukm_id = u.id
-            WHERE p.mahasiswa_id = ? AND COALESCE(p.status, '') != 'pending'
-            ORDER BY COALESCE(p.updated_at, p.created_at) DESC
-            LIMIT 5";
-    $stmt = $db->prepare($sql);
-    $stmt->execute([$mahasiswa_id]);
-    $notifikasi = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-} catch (PDOException $e) {
-    error_log("Error getting mahasiswa dashboard data: " . $e->getMessage());
-    // Jika error, siapkan data default minimal agar halaman tetap render
-    if (empty($mahasiswa)) {
-        $mahasiswa = [
-            'nama' => 'Test Mahasiswa',
-            'nim' => '2024000000',
-            'jurusan' => 'Teknik Informatika',
-            'angkatan' => '2024'
-        ];
+// Statistik
+$pending = $diterima = $ditolak = $cuti = $dikeluarkan = 0;
+foreach ($pendaftaran_saya as $p) {
+    $status = strtolower(trim($p['status'] ?? ''));
+    $keanggotaan = strtolower(trim($p['status_keanggotaan'] ?? ''));
+    if ($status === 'pending') $pending++;
+    elseif ($status === 'ditolak') $ditolak++;
+    elseif ($status === 'diterima') {
+        $diterima++;
+        if ($keanggotaan === 'cuti') $cuti++;
+        elseif ($keanggotaan === 'dikeluarkan') $dikeluarkan++;
     }
 }
+$total_pendaftaran = count($pendaftaran_saya);
+
+// Ambil UKM tersedia (sama seperti versi awal Anda)
+$stmt = $db->prepare("
+    SELECT 
+        u.id, u.nama_ukm, u.deskripsi, k.nama_kategori,
+        COUNT(DISTINCT p.id) AS total_pendaftar,
+        CASE WHEN EXISTS(
+            SELECT 1 FROM pendaftaran pu WHERE pu.ukm_id = u.id AND pu.mahasiswa_id = ?
+        ) THEN 1 ELSE 0 END AS sudah_daftar
+    FROM ukm u
+    LEFT JOIN kategori_ukm k ON u.kategori_id = k.id
+    LEFT JOIN pendaftaran p ON u.id = p.ukm_id
+    WHERE u.status = 'aktif'
+    GROUP BY u.id, u.nama_ukm, u.deskripsi, k.nama_kategori
+    ORDER BY u.nama_ukm
+    LIMIT 6
+");
+$stmt->execute([$mahasiswa_id]);
+$ukm_tersedia = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+// Normalisasi data UKM
+foreach ($ukm_tersedia as &$ukm) {
+    $ukm['nama_ukm'] = $ukm['nama_ukm'] ?? 'UKM Tidak Diketahui';
+    $ukm['nama_kategori'] = $ukm['nama_kategori'] ?? 'Kategori Tidak Diketahui';
+    $ukm['deskripsi'] = $ukm['deskripsi'] ?? 'Tidak ada deskripsi';
+    $ukm['total_pendaftar'] = isset($ukm['total_pendaftar']) ? (int)$ukm['total_pendaftar'] : 0;
+    $ukm['sudah_daftar'] = isset($ukm['sudah_daftar']) ? (int)$ukm['sudah_daftar'] : 0;
+}
+unset($ukm);
 ?>
 
 <!DOCTYPE html>
@@ -157,8 +115,8 @@ try {
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dashboard Mahasiswa - UKM Polinela</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href=" https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css " rel="stylesheet">
+    <link href=" https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css " rel="stylesheet">
     <style>
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -205,6 +163,8 @@ try {
             </a>
             <div class="navbar-nav ms-auto">
                 <a class="nav-link" href="../index.php"><i class="fas fa-home me-1"></i>Beranda</a>
+                <!-- ✅ FITUR 1: Edit Profil -->
+                <a class="nav-link" href="edit_profil.php"><i class="fas fa-user-cog me-1"></i>Profil</a>
                 <a class="nav-link" href="../auth/logout.php"><i class="fas fa-sign-out-alt me-1"></i>Logout</a>
             </div>
         </div>
@@ -215,9 +175,13 @@ try {
             <div class="welcome-card">
                 <div class="row align-items-center">
                     <div class="col-md-2">
-                        <div class="avatar">
-                            <i class="fas fa-user-circle fa-4x text-primary"></i>
-                        </div>
+                        <!-- Foto Profil -->
+                        <?php
+                            $foto_path = $mahasiswa['foto'] ?? '';
+                            $default_foto = 'https://via.placeholder.com/150?text=No+Photo';
+                            $foto_url = !empty($foto_path) ? '../uploads/' . htmlspecialchars($foto_path) : $default_foto;
+                        ?>
+                        <img src="<?= $foto_url ?>" alt="Foto Profil" class="rounded-circle img-fluid" style="width: 100px; height: 100px; object-fit: cover;">
                     </div>
                     <div class="col-md-10 text-start">
                         <h2 class="fw-bold">Selamat Datang, <?= htmlspecialchars($mahasiswa['nama'], ENT_QUOTES, 'UTF-8') ?>!</h2>
@@ -294,6 +258,7 @@ try {
                                                 <th>UKM</th>
                                                 <th>Tanggal</th>
                                                 <th>Status</th>
+                                                <th>Aksi</th> <!-- ✅ Tambah kolom Aksi -->
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -307,12 +272,28 @@ try {
                                                         $created_at = date('d/m/Y', strtotime($created_at_raw));
                                                     }
                                                     $status = $p['status'] ?? 'pending';
-                                                    $status_text = ucfirst(htmlspecialchars($status, ENT_QUOTES, 'UTF-8'));
+                                                    $keanggotaan = $p['status_keanggotaan'] ?? '';
+                                                    $status_text = '';
                                                     $badge_class = 'bg-secondary';
-                                                    switch (strtolower($status)) {
-                                                        case 'pending': $badge_class = 'bg-warning'; break;
-                                                        case 'diterima': $badge_class = 'bg-success'; break;
-                                                        case 'ditolak': $badge_class = 'bg-danger'; break;
+
+                                                    if ($status === 'pending') {
+                                                        $status_text = 'Menunggu';
+                                                        $badge_class = 'bg-warning';
+                                                    } elseif ($status === 'ditolak') {
+                                                        $status_text = 'Ditolak';
+                                                        $badge_class = 'bg-danger';
+                                                    } elseif ($status === 'diterima') {
+                                                        // ✅ TAMPILKAN status_keanggotaan
+                                                        if ($keanggotaan === 'cuti') {
+                                                            $status_text = 'Cuti';
+                                                            $badge_class = 'bg-info';
+                                                        } elseif ($keanggotaan === 'dikeluarkan') {
+                                                            $status_text = 'Dikeluarkan';
+                                                            $badge_class = 'bg-secondary';
+                                                        } else {
+                                                            $status_text = 'Aktif';
+                                                            $badge_class = 'bg-success';
+                                                        }
                                                     }
                                                 ?>
                                                 <tr>
@@ -322,6 +303,12 @@ try {
                                                     </td>
                                                     <td><?= $created_at ?></td>
                                                     <td><span class="badge <?= $badge_class ?>"><?= $status_text ?></span></td>
+                                                    <td>
+                                                        <!-- ✅ FITUR 2: Lihat Detail -->
+                                                        <a href="detail_pendaftaran.php?id=<?= $p['pendaftaran_id'] ?>" class="btn btn-sm btn-outline-primary">
+                                                            <i class="fas fa-eye"></i>
+                                                        </a>
+                                                    </td>
                                                 </tr>
                                             <?php endforeach; ?>
                                         </tbody>
@@ -332,6 +319,7 @@ try {
                     </div>
                 </div>
 
+                <!-- ✅ UKM Tersedia: DESAIN ASLI DIPERTAHANKAN -->
                 <div class="col-12">
                     <div class="content-card">
                         <div class="card-header bg-white border-0 p-4">
@@ -375,7 +363,7 @@ try {
                                                     <?php if ($ukm_sudah): ?>
                                                         <span class="status-badge status-joined"><i class="fas fa-check me-1"></i>Sudah Bergabung</span>
                                                     <?php else: ?>
-                                                        <a href="detail_ukm.php?id=<?= $ukm_id ?>" class="btn-daftar w-100 justify-content-center">
+                                                        <a href="ukm/detail.php?id=<?= $ukm_id ?>" class="btn-daftar w-100 justify-content-center">
                                                             <i class="fas fa-paper-plane me-1"></i>Lihat Detail
                                                         </a>
                                                     <?php endif; ?>
@@ -393,11 +381,24 @@ try {
                             <?php endif; ?>
                         </div>
                     </div>
-                </div> <!-- col-12 -->
-            </div> <!-- row g-4 -->
-        </div> <!-- container -->
-    </div> <!-- dashboard-container -->
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- ✅ FITUR 3: Notifikasi (opsional) -->
+    <div class="fixed-bottom mb-4 me-4 text-end" style="z-index: 1000;">
+        <div class="alert alert-info alert-dismissible fade show" role="alert" style="max-width: 300px; display: none;" id="notifAlert">
+            <small><i class="fas fa-bell me-1"></i> Status keanggotaan diperbarui.</small>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+
+    <script src=" https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js "></script>
+    <!-- Script notifikasi sederhana -->
+    <script>
+        // Bisa dikembangkan untuk cek update otomatis
+        // Untuk sekarang, hanya sebagai placeholder
+    </script>
 </body>
 </html>

@@ -1,0 +1,28 @@
+# Prevent directory listing
+Options -Indexes
+
+# Error Pages
+ErrorDocument 404 /404.php
+ErrorDocument 403 /403.php
+
+# PHP Settings
+php_flag display_errors Off
+php_flag log_errors On
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# URL Rewriting (Optional)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /ukm/
+    
+    # Remove .php extension
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.*)$ $1.php [L]
+</IfModule>

@@ -1,5 +1,5 @@
 <?php
-// superadmin/kelola_ukm.php (Revisi 2: Menggunakan nama tabel kategori yang benar: 'kategori_ukm')
+// superadmin/kelola_ukm.php (Revisi 3: DIPERBAIKI - Hapus kolom 'ketua' yang tidak ada)
 
 require_once '../config/database.php';
 require_once '../config/functions.php';
@@ -102,7 +102,7 @@ if ($_POST) {
     $syarat_pendaftaran = null;
     $max_anggota = 100;
     $biaya_pendaftaran = 0.00;
-    $ketua = null;
+    // $ketua = null;  // ❌ DIHAPUS - TIDAK ADA DI TABEL
     $kontak = null;
     
     $is_edit_mode = isset($_POST['ukm_id']) && $_POST['ukm_id'] > 0;
@@ -157,21 +157,21 @@ if ($_POST) {
                 } else {
                     $new_admin_id = $db->lastInsertId();
                     
-                    // 1E. INSERT UKM BARU (menggunakan semua kolom Anda)
+                    // 1E. INSERT UKM BARU (TANPA 'ketua')
                     $query_ukm_insert = "
                         INSERT INTO ukm (
                             nama_ukm, deskripsi, kategori_id, ketua_umum, email, no_telepon, status, admin_id,
-                            logo, alamat_sekretariat, visi, misi, program_kerja, syarat_pendaftaran, max_anggota, biaya_pendaftaran, ketua, kontak
+                            logo, alamat_sekretariat, visi, misi, program_kerja, syarat_pendaftaran, max_anggota, biaya_pendaftaran, kontak
                         ) VALUES (
                             ?, ?, ?, ?, ?, ?, ?, ?,
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )";
                     $stmt_ukm_insert = $db->prepare($query_ukm_insert);
                     
-                    // Total 18 parameters
+                    // Total 17 parameters (1 kolom dihapus: 'ketua')
                     $params = [
                         $nama_ukm, $deskripsi, $kategori_id, $ketua_umum, $email_ukm, $no_telepon, $status, $new_admin_id,
-                        $logo, $alamat_sekretariat, $visi, $misi, $program_kerja, $syarat_pendaftaran, $max_anggota, $biaya_pendaftaran, $ketua, $kontak
+                        $logo, $alamat_sekretariat, $visi, $misi, $program_kerja, $syarat_pendaftaran, $max_anggota, $biaya_pendaftaran, $kontak
                     ];
 
                     if (!$stmt_ukm_insert->execute($params)) {
@@ -244,14 +244,13 @@ if ($action === 'view') {
                 k.nama_kategori
             FROM ukm u
             LEFT JOIN admin a ON u.admin_id = a.id
-            LEFT JOIN kategori_ukm k ON u.kategori_id = k.id -- PERBAIKAN: Menggunakan alias 'k' untuk kategori_ukm
+            LEFT JOIN kategori_ukm k ON u.kategori_id = k.id
             ORDER BY u.nama_ukm ASC
         ";
         $stmt = $db->prepare($query);
         $stmt->execute();
         $ukms = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (PDOException $e) {
-        // Tampilkan error database yang sebenarnya jika terjadi error saat memuat data UKM
         $error = "Gagal memuat data UKM. Detail: " . $e->getMessage();
     }
 }
@@ -278,7 +277,7 @@ if (isset($_GET['status'])) {
         .sidebar { height: 100vh; background: #2c3e50; padding-top: 20px; color: white; position: fixed; left: 0; top: 0; z-index: 1000; }
         .sidebar a { padding: 12px; display: block; color: white; text-decoration: none; font-weight: 500; }
         .sidebar a:hover, .sidebar a.active { background: #1abc9c; border-radius: 5px; }
-        .main-content { padding: 0; }
+        .main-content { padding: 0; margin-left: 16.66%; } /* offset-2 ≈ 16.66% */
         .header { background: linear-gradient(135deg, #2980b9, #6dd5fa); padding: 25px; color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .card-form { box-shadow: 0 5px 20px rgba(0,0,0,0.1); border-radius: 15px; }
         .table-responsive { background-color: white; padding: 15px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
@@ -293,12 +292,13 @@ if (isset($_GET['status'])) {
             <h4 class="text-center mb-4"><i class="fas fa-crown"></i> Super Admin</h4>
             <a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
             <a href="kelola_admin.php"><i class="fas fa-users-cog"></i> Kelola Admin</a>
+            <a href="kelola_mahasiswa.php"><i class="fas fa-user-graduate"></i> Kelola Mahasiswa</a>
             <a href="kelola_ukm.php" class="active"><i class="fas fa-sitemap"></i> Kelola UKM</a>
             <a href="../admin/dashboard.php"><i class="fas fa-user-shield"></i> Mode Admin</a>
             <a href="../auth/logout.php" class="text-danger"><i class="fas fa-sign-out-alt"></i> Logout</a>
         </div>
 
-        <div class="col-10 offset-2 p-4 main-content">
+        <div class="col-10 p-4 main-content">
 
             <div class="header mb-4 rounded-3">
                 <h3 class="mb-0">Kelola Unit Kegiatan Mahasiswa (UKM)</h3>

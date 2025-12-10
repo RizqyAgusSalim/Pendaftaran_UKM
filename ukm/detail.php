@@ -1,97 +1,59 @@
 <?php
-
-// 1. PATH FILES DEPENDENCIES
-// Karena detail.php ada di folder ukm/, kita harus keluar satu tingkat (../)
+// ukm/detail.php — TAMPILKAN SEMUA DATA DARI admin/kelola_ukm.php
 require_once '../config/database.php';
-require_once '../config/functions.php'; // Mengandung isLoggedIn(), formatTanggal(), dsb.
+require_once '../config/functions.php';
 
-// Inisialisasi Database
-$database = new Database();
-$db = $database->getConnection();
-
-// Inisialisasi variabel UKM
-$ukm_detail = null;
-$ukm_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-
-if ($ukm_id > 0) {
-    // 2. QUERY UNTUK MENGAMBIL DATA UKM SECARA LENGKAP
-    try {
-        $query = "
-            SELECT 
-                u.*, 
-                k.nama_kategori,
-                (SELECT COUNT(m.id) FROM pendaftaran m WHERE m.ukm_id = u.id AND m.status = 'diterima') as total_anggota
-            FROM 
-                ukm u 
-            LEFT JOIN 
-                kategori_ukm k ON u.kategori_id = k.id 
-            WHERE 
-                u.id = :id AND u.status = 'aktif'
-            LIMIT 1
-        ";
-        $stmt = $db->prepare($query);
-        $stmt->bindParam(':id', $ukm_id, PDO::PARAM_INT);
-        $stmt->execute();
-        $ukm_detail = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        // 3. QUERY UNTUK MENGAMBIL BERITA TERKAIT UKM (Maksimal 3)
-        $query_berita = "
-            SELECT 
-                * FROM 
-                berita 
-            WHERE 
-                ukm_id = :id AND status = 'published' 
-            ORDER BY 
-                tanggal_publikasi DESC 
-            LIMIT 3
-        ";
-        $stmt_berita = $db->prepare($query_berita);
-        $stmt_berita->bindParam(':id', $ukm_id, PDO::PARAM_INT);
-        $stmt_berita->execute();
-        $berita_ukm = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
-
-
-        // 4. Cek Status Pendaftaran Mahasiswa (Jika Login)
-        $status_pendaftaran = 'belum_daftar';
-        if (isMahasiswa()) {
-             // Asumsi $_SESSION['user_id'] berisi ID mahasiswa yang sedang login
-            $mahasiswa_id = $_SESSION['user_id']; 
-            
-            $query_check = "SELECT status FROM pendaftaran WHERE ukm_id = :ukm_id AND mahasiswa_id = :mhs_id LIMIT 1";
-            $stmt_check = $db->prepare($query_check);
-            $stmt_check->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
-            $stmt_check->bindParam(':mhs_id', $mahasiswa_id, PDO::PARAM_INT);
-            $stmt_check->execute();
-            $check = $stmt_check->fetch(PDO::FETCH_ASSOC);
-
-            if ($check) {
-                $status_pendaftaran = $check['status']; // 'menunggu', 'diterima', 'ditolak'
-            }
-        }
-
-
-    } catch (PDOException $e) {
-        // Handle error database jika diperlukan
-        // echo "Error: " . $e->getMessage();
+if (!isset($_GET['id']) || empty($_GET['id'])) {
+    if (function_exists('redirect')) {
+        redirect('../ukm/index.php');
+    } else {
+        header('Location: ../ukm/index.php');
+        exit();
     }
 }
 
-// Jika UKM tidak ditemukan, kembalikan ke halaman daftar atau tampilkan pesan error
-if (!$ukm_detail) {
-    // Tampilkan pesan error dan berhenti
-    $judul_halaman = "UKM Tidak Ditemukan";
-    // Jika Anda punya file header terpisah, Anda harus me-require-nya di sini.
-    // Asumsi kita menggunakan template sederhana
-    echo "<!DOCTYPE html><html lang='id'><head><meta charset='UTF-8'><title>$judul_halaman</title>";
-    echo '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">';
-    echo '</head><body><div class="container mt-5"><div class="alert alert-danger">UKM yang Anda cari tidak aktif atau tidak ditemukan. <a href="../index.php#ukm">Kembali ke Daftar UKM</a></div></div></body></html>';
-    exit;
+$ukm_id = (int)$_GET['id'];
+$database = new Database();
+$db = $database->getConnection();
+
+$stmt = $db->prepare("
+    SELECT u.*, k.nama_kategori 
+    FROM ukm u 
+    LEFT JOIN kategori_ukm k ON u.kategori_id = k.id 
+    WHERE u.id = :id
+");
+$stmt->bindParam(':id', $ukm_id, PDO::PARAM_INT);
+$stmt->execute();
+$ukm = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$ukm) {
+    if (function_exists('redirect')) {
+        redirect('../ukm/index.php');
+    } else {
+        header('Location: ../ukm/index.php');
+        exit();
+    }
 }
 
-// Data ditemukan, kita tampilkan
-$judul_halaman = "Detail UKM - " . $ukm_detail['nama_ukm'];
-// Jika Anda menggunakan file header.php terpisah, Anda bisa memanggilnya di sini:
-// require_once '../header.php'; 
+// Hitung anggota
+$stmt_anggota = $db->prepare("SELECT COUNT(*) FROM pendaftaran WHERE ukm_id = ? AND status = 'diterima'");
+$stmt_anggota->execute([$ukm_id]);
+$anggota_count = (int)$stmt_anggota->fetchColumn();
+
+// Ambil kegiatan_ukm
+$kegiatan_list = [];
+try {
+    $stmt_keg = $db->prepare("
+        SELECT * FROM kegiatan_ukm 
+        WHERE ukm_id = ? 
+        ORDER BY tanggal_mulai DESC 
+        LIMIT 3
+    ");
+    $stmt_keg->execute([$ukm_id]);
+    $kegiatan_list = $stmt_keg->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $kegiatan_list = [];
+}
 ?>
 
 <!DOCTYPE html>
@@ -99,150 +61,332 @@ $judul_halaman = "Detail UKM - " . $ukm_detail['nama_ukm'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $judul_halaman ?></title>
+    <title><?= htmlspecialchars($ukm['nama_ukm']) ?> - Detail UKM</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #3498db;
-            --accent-color: #e74c3c;
+            --primary-color: #1e3c72;
+            --secondary-color: #2a5298;
+            --accent-color: #ffc107;
         }
         .ukm-header {
-            background-color: var(--primary-color);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
             color: white;
-            padding: 50px 0;
-            border-radius: 10px;
-            margin-top: 70px; /* Jarak dari navbar */
+            padding: 80px 0;
+            border-bottom-left-radius: 50px;
+            border-bottom-right-radius: 50px;
+            margin-bottom: 30px;
         }
-        .ukm-logo-detail {
+        .logo-container {
             width: 150px;
             height: 150px;
-            object-fit: cover;
+            background: white;
             border-radius: 50%;
-            border: 5px solid white;
-            box-shadow: 0 0 10px rgba(0,0,0,0.3);
-        }
-        .info-box {
-            background: #f8f9fa;
-            border-left: 5px solid var(--secondary-color);
-            padding: 20px;
-            border-radius: 5px;
+            padding: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
             margin-bottom: 20px;
+            border: 5px solid rgba(255, 255, 255, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .logo-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .badge-kategori {
+            font-size: 0.9rem;
+            font-weight: 600;
+            padding: 0.5rem 1.2rem;
+            border-radius: 50px;
+            background-color: var(--accent-color) !important;
+            color: #333 !important;
+        }
+        .info-card {
+            border: 1px solid #f0f0f0;
+            border-radius: 12px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.05);
+        }
+        .info-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            color: white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .section-title {
+            color: var(--primary-color);
+            font-weight: 700;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .kegiatan-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: none;
+        }
+        .foto-thumb {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+        .btn-daftar {
+            padding: 15px 50px;
+            font-size: 1.1rem;
+            border-radius: 50px;
+            background-color: var(--accent-color) !important; 
+            color: #333 !important;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .btn-daftar:hover {
+            background-color: #ffca2c !important; 
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
         }
     </style>
 </head>
 <body>
-    
-    <main class="container">
-        
-        <section class="ukm-header text-center mb-5">
-            <div class="row align-items-center">
-                <div class="col-12">
-                    <?php 
-                        $logo_path = !empty($ukm_detail['logo']) ? '../uploads/' . htmlspecialchars($ukm_detail['logo']) : '';
-                        if ($logo_path): 
-                    ?>
-                        <img src="<?= $logo_path ?>" alt="Logo <?= htmlspecialchars($ukm_detail['nama_ukm']) ?>" class="ukm-logo-detail">
-                    <?php else: ?>
-                        <div class="ukm-logo-detail bg-secondary d-flex align-items-center justify-content-center mx-auto">
-                            <i class="fas fa-users text-white fa-4x"></i>
-                        </div>
-                    <?php endif; ?>
-                    
-                    <h1 class="mt-3 fw-bold"><?= htmlspecialchars($ukm_detail['nama_ukm']) ?></h1>
-                    <span class="badge bg-warning text-dark fs-6"><?= htmlspecialchars($ukm_detail['nama_kategori'] ?: 'Umum') ?></span>
-                </div>
+    <div class="ukm-header">
+        <div class="container text-center">
+            <div class="logo-container mx-auto">
+                <?php if (!empty($ukm['logo'])): ?>
+                    <img src="../uploads/<?= htmlspecialchars($ukm['logo']) ?>" alt="<?= htmlspecialchars($ukm['nama_ukm']) ?>">
+                <?php else: ?>
+                    <i class="fas fa-cubes fa-5x text-secondary opacity-75"></i> 
+                <?php endif; ?>
             </div>
-        </section>
+            <h1 class="display-3 fw-bolder mb-3"><?= htmlspecialchars($ukm['nama_ukm']) ?></h1>
+            <p class="lead mb-0">
+                <span class="badge badge-kategori">
+                    <i class="fas fa-tag me-1"></i> <?= htmlspecialchars($ukm['nama_kategori'] ?? 'Umum') ?>
+                </span>
+            </p>
+        </div>
+    </div>
 
-        <section class="mb-5">
-            <div class="row">
-                <div class="col-lg-8">
-                    <h2 class="fw-bold mb-3 text-primary"><i class="fas fa-file-alt me-2"></i> Tentang Kami</h2>
-                    <p class="lead text-dark"><?= nl2br(htmlspecialchars($ukm_detail['deskripsi'])) ?></p>
+    <div class="container my-5">
+        <div class="row">
+            <div class="col-lg-8 mb-4">
+                <!-- Profil Lengkap UKM -->
+                <div class="card info-card mb-5">
+                    <div class="card-body p-4">
+                        <h3 class="section-title"><i class="fas fa-book-open"></i> Profil Lengkap UKM</h3>
+                        
+                        <!-- Deskripsi -->
+                        <?php if (!empty($ukm['deskripsi'])): ?>
+                            <h5 class="mt-3"><i class="fas fa-info-circle text-primary"></i> Deskripsi</h5>
+                            <p class="text-secondary"><?= nl2br(htmlspecialchars($ukm['deskripsi'])) ?></p>
+                        <?php endif; ?>
 
-                    <h3 class="fw-bold mt-5 mb-3 text-primary"><i class="fas fa-cogs me-2"></i> Program Kerja Utama</h3>
-                    <div class="card p-4">
-                        <div class="card-body">
-                             <?= nl2br(htmlspecialchars($ukm_detail['program_kerja'] ?? 'Informasi program kerja belum tersedia.')) ?>
-                        </div>
+                        <!-- Visi -->
+                        <?php if (!empty($ukm['visi'])): ?>
+                            <h5 class="mt-4"><i class="fas fa-eye text-success"></i> Visi</h5>
+                            <p class="text-secondary"><?= nl2br(htmlspecialchars($ukm['visi'])) ?></p>
+                        <?php endif; ?>
+
+                        <!-- Misi -->
+                        <?php if (!empty($ukm['misi'])): ?>
+                            <h5 class="mt-4"><i class="fas fa-bullseye text-danger"></i> Misi</h5>
+                            <p class="text-secondary"><?= nl2br(htmlspecialchars($ukm['misi'])) ?></p>
+                        <?php endif; ?>
+
+                        <!-- Program Kerja -->
+                        <?php if (!empty($ukm['program_kerja'])): ?>
+                            <h5 class="mt-4"><i class="fas fa-tasks text-warning"></i> Program Kerja</h5>
+                            <p class="text-secondary"><?= nl2br(htmlspecialchars($ukm['program_kerja'])) ?></p>
+                        <?php endif; ?>
+
+                        <!-- Syarat Pendaftaran -->
+                        <?php if (!empty($ukm['syarat_pendaftaran'])): ?>
+                            <h5 class="mt-4"><i class="fas fa-clipboard-list text-info"></i> Syarat Pendaftaran</h5>
+                            <p class="text-secondary"><?= nl2br(htmlspecialchars($ukm['syarat_pendaftaran'])) ?></p>
+                        <?php endif; ?>
+
+                        <!-- Alamat Sekretariat -->
+                        <?php if (!empty($ukm['alamat_sekretariat'])): ?>
+                            <h5 class="mt-4"><i class="fas fa-map-marker-alt text-secondary"></i> Alamat Sekretariat</h5>
+                            <p class="text-secondary"><?= nl2br(htmlspecialchars($ukm['alamat_sekretariat'])) ?></p>
+                        <?php endif; ?>
                     </div>
                 </div>
 
-                <div class="col-lg-4">
-                    <div class="card p-3 shadow-sm sticky-top" style="top: 80px;">
-                        <h4 class="mb-3"><i class="fas fa-info-circle me-2"></i> Informasi Cepat</h4>
-                        <div class="info-box">
-                            <p class="mb-1"><small class="text-muted">Ketua Umum</small></p>
-                            <h5 class="fw-bold"><?= htmlspecialchars($ukm_detail['ketua_umum']) ?></h5>
-                        </div>
-                        <div class="info-box">
-                            <p class="mb-1"><small class="text-muted">Total Anggota Aktif</small></p>
-                            <h5 class="fw-bold"><?= $ukm_detail['total_anggota'] ?> <i class="fas fa-users text-success"></i></h5>
-                        </div>
-                        <div class="info-box">
-                            <p class="mb-1"><small class="text-muted">Tahun Berdiri</small></p>
-                            <h5 class="fw-bold"><?= htmlspecialchars($ukm_detail['tahun_berdiri']) ?></h5>
-                        </div>
-                        <div class="info-box">
-                            <p class="mb-1"><small class="text-muted">Kontak</small></p>
-                            <h5 class="fw-bold"><i class="fab fa-whatsapp"></i> <?= htmlspecialchars($ukm_detail['kontak']) ?></h5>
-                        </div>
+                <!-- Kegiatan UKM -->
+                <div class="card info-card mb-4">
+                    <div class="card-body p-4">
+                        <h3 class="section-title"><i class="fas fa-calendar-check text-success"></i> Kegiatan Terbaru</h3>
                         
-                        <hr>
-                        
-                        <?php if (isMahasiswa()): ?>
-                            <?php if ($status_pendaftaran == 'diterima'): ?>
-                                <button class="btn btn-success btn-lg mt-2" disabled>
-                                    <i class="fas fa-check-circle"></i> Anda Sudah Menjadi Anggota
-                                </button>
-                            <?php elseif ($status_pendaftaran == 'menunggu'): ?>
-                                <button class="btn btn-warning btn-lg mt-2" disabled>
-                                    <i class="fas fa-clock"></i> Pendaftaran Anda Sedang Diproses
-                                </button>
-                            <?php else: ?>
-                                <a href="../mahasiswa/daftar_ukm.php?ukm_id=<?= $ukm_detail['id'] ?>" class="btn btn-primary btn-lg mt-2">
-                                    <i class="fas fa-plus"></i> Daftar UKM Ini Sekarang
+                        <?php if (empty($kegiatan_list)): ?>
+                            <div class="text-center py-5 bg-light rounded-3">
+                                <i class="fas fa-tasks fa-3x text-muted mb-3"></i>
+                                <h5 class="text-muted">Belum ada kegiatan terpublikasi.</h5>
+                                <p class="text-secondary">Nantikan pembaruan dari pengurus UKM!</p>
+                            </div>
+                        <?php else: ?>
+                            <?php foreach ($kegiatan_list as $keg): ?>
+                                <div class="card mb-4">
+                                    <div class="card-body">
+                                        <h5 class="fw-bold"><?= htmlspecialchars($keg['nama_kegiatan']) ?></h5>
+                                        <p class="text-muted mb-2">
+                                            <i class="fas fa-calendar-day me-1"></i> 
+                                            <?= $keg['tanggal_mulai'] ? date('d F Y', strtotime($keg['tanggal_mulai'])) : '—' ?> |
+                                            <i class="fas fa-map-marker-alt me-1"></i> <?= htmlspecialchars($keg['lokasi'] ?? '—') ?>
+                                        </p>
+                                        <p><?= nl2br(htmlspecialchars($keg['deskripsi_kegiatan'] ?? '—')) ?></p>
+
+                                        <!-- Foto Kegiatan -->
+                                        <?php
+                                        $stmt_foto = $db->prepare("SELECT * FROM foto_kegiatan WHERE kegiatan_id = ? ORDER BY id ASC");
+                                        $stmt_foto->execute([$keg['id']]);
+                                        $foto_list = $stmt_foto->fetchAll(PDO::FETCH_ASSOC);
+                                        ?>
+                                        <?php if (!empty($foto_list)): ?>
+                                            <div class="mt-3">
+                                                <h6 class="mb-2"><i class="fas fa-images text-primary"></i> Dokumentasi</h6>
+                                                <div class="row">
+                                                    <?php foreach ($foto_list as $foto): ?>
+                                                        <div class="col-md-6 col-lg-4 mb-2">
+                                                            <img src="../uploads/kegiatan/<?= htmlspecialchars($foto['foto']) ?>" 
+                                                                 class="foto-thumb" 
+                                                                 alt="Foto kegiatan">
+                                                            <?php if (!empty($foto['keterangan'])): ?>
+                                                                <small class="text-muted d-block mt-1"><?= htmlspecialchars($foto['keterangan']) ?></small>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                            <div class="text-end mt-3">
+                                <a href="kegiatan.php?ukm_id=<?= $ukm['id'] ?>" class="btn btn-outline-primary btn-sm rounded-pill">
+                                    Lihat Semua <i class="fas fa-arrow-right"></i>
                                 </a>
-                            <?php endif; ?>
-                        <?php elseif (!isLoggedIn()): ?>
-                            <a href="../auth/login.php" class="btn btn-secondary btn-lg mt-2">
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="col-lg-4">
+                <div class="card info-card mb-4">
+                    <div class="card-body p-4">
+                        <h4 class="text-center fw-bold mb-4 text-secondary"><i class="fas fa-clipboard-list me-2"></i> Detail UKM</h4>
+                        
+                        <!-- Tanggal Berdiri -->
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="info-icon me-3" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                                <i class="fas fa-calendar-alt"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">Tanggal Berdiri</h6>
+                                <h5 class="fw-bold">
+                                    <?php if (!empty($ukm['tahun_berdiri'])): ?>
+                                        <?php
+                                            $date = new DateTime($ukm['tahun_berdiri']);
+                                            echo $date->format('d F Y');
+                                        ?>
+                                    <?php else: ?>
+                                        N/A
+                                    <?php endif; ?>
+                                </h5>
+                            </div>
+                        </div>
+
+                        <hr class="my-3">
+
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="info-icon me-3" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">Anggota Aktif</h6>
+                                <h5 class="fw-bold"><?= $anggota_count ?> Orang</h5>
+                            </div>
+                        </div>
+
+                        <hr class="my-3">
+
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="info-icon me-3" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                <i class="fas fa-user-tie"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">Ketua Umum</h6>
+                                <h5 class="fw-bold"><?= htmlspecialchars($ukm['ketua_umum'] ?? 'N/A') ?></h5>
+                            </div>
+                        </div>
+
+                        <?php if (!empty($ukm['email'])): ?>
+                        <hr class="my-3">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="info-icon me-3" style="background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);">
+                                <i class="fas fa-envelope"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">Email</h6>
+                                <h5 class="fw-bold"><?= htmlspecialchars($ukm['email']) ?></h5>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($ukm['no_telepon'])): ?>
+                        <hr class="my-3">
+                        <div class="d-flex align-items-center">
+                            <div class="info-icon me-3" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                <i class="fas fa-phone-alt"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">Kontak</h6>
+                                <h5 class="fw-bold"><?= htmlspecialchars($ukm['no_telepon']) ?></h5>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Tombol Daftar -->
+                <div class="card info-card border-0" style="background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);">
+                    <div class="card-body p-4 text-center text-white">
+                        <h4 class="mb-3 fw-bold">Tertarik Bergabung?</h4>
+                        <p class="mb-4">Daftarkan dirimu sekarang dan kembangkan bakatmu!</p>
+                        <?php if (function_exists('isLoggedIn') && isLoggedIn()): ?>
+                            <a href="../mahasiswa/daftar_ukm.php?ukm_id=<?= $ukm['id'] ?>" class="btn btn-warning btn-daftar w-100">
+                                <i class="fas fa-user-plus"></i> Daftar UKM Ini Sekarang
+                            </a>
+                        <?php else: ?>
+                            <a href="../auth/login.php" class="btn btn-warning btn-daftar w-100">
                                 <i class="fas fa-sign-in-alt"></i> Login untuk Mendaftar
                             </a>
                         <?php endif; ?>
-                        <a href="../index.php#ukm" class="btn btn-outline-secondary mt-3"><i class="fas fa-arrow-left"></i> Kembali ke Daftar</a>
-
                     </div>
                 </div>
-            </div>
-        </section>
-        
-        <?php if (!empty($berita_ukm)): ?>
-        <section class="my-5">
-            <h2 class="fw-bold mb-4 text-center"><i class="fas fa-newspaper me-2"></i> Berita Terbaru dari UKM Ini</h2>
-            <div class="row">
-                <?php foreach ($berita_ukm as $berita): ?>
-                <div class="col-lg-4 col-md-6 mb-4">
-                    <div class="card shadow-sm h-100">
-                        <?php if ($berita['gambar']): ?>
-                            <img src="../uploads/<?= htmlspecialchars($berita['gambar']) ?>" class="card-img-top" style="height: 180px; object-fit: cover;">
-                        <?php endif; ?>
-                        <div class="card-body">
-                            <h5 class="card-title"><?= htmlspecialchars($berita['judul']) ?></h5>
-                            <p class="card-text text-muted small">
-                                <i class="fas fa-calendar-alt"></i> <?= formatTanggal($berita['tanggal_publikasi']) ?>
-                            </p>
-                            <a href="#" class="btn btn-sm btn-outline-primary">Baca Selengkapnya</a>
-                        </div>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-            </div>
-        </section>
-        <?php endif; ?>
 
-    </main>
+                <div class="mt-3 text-center">
+                    <a href="../ukm/index.php" class="btn btn-outline-secondary w-100">
+                        <i class="fas fa-arrow-left me-2"></i> Kembali ke Daftar UKM
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-dark text-white py-4 mt-5">
+        <div class="container text-center">
+            <p class="mb-0">&copy; <?= date('Y') ?> Sistem Pendaftaran UKM - Politeknik Negeri Lampung</p>
+        </div>
+    </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>

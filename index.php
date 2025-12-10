@@ -149,7 +149,7 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
                         <a class="nav-link active" href="#home">Beranda</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#ukm">Daftar UKM</a>
+                        <a class="nav-link" href="ukm/index.php">Daftar UKM</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="#berita">Berita</a>
@@ -209,7 +209,7 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
                         <a href="auth/register.php" class="btn btn-warning btn-lg btn-primary-custom me-3">
                             <i class="fas fa-user-plus"></i> Daftar Sekarang
                         </a>
-                        <a href="#ukm" class="btn btn-outline-light btn-lg">
+                        <a href="ukm/index.php" class="btn btn-outline-light btn-lg">
                             <i class="fas fa-list"></i> Lihat UKM
                         </a>
                     <?php endif; ?>
@@ -291,7 +291,7 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
                             </div>
                             
                             <div class="d-grid gap-2">
-                                <a href="ukm/detail.php?id=<?= $ukm['id'] ?>" class="btn btn-primary btn-primary-custom">
+                                <a href="ukm/index.php?= $ukm['id'] ?>" class="btn btn-primary btn-primary-custom">
                                     <i class="fas fa-info-circle"></i> Lihat Detail
                                 </a>
                                 <?php if (isMahasiswa()): ?>

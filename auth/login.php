@@ -50,14 +50,20 @@ if ($_POST) {
                 $_SESSION['username'] = $admin['username'];
                 $_SESSION['nama'] = $admin['nama'];
                 $_SESSION['user_type'] = 'admin';
-                $_SESSION['user_role'] = $admin['role']; // admin / superadmin
+                $_SESSION['user_role'] = $admin['role']; // superadmin / admin
+
+                // 🔹 SIMPAN ukm_id ke sesi jika ada (untuk admin UKM)
+                if (!empty($admin['ukm_id'])) {
+                    $_SESSION['ukm_id'] = (int)$admin['ukm_id'];
+                }
 
                 // Super Admin
                 if ($admin['role'] === 'superadmin') {
                     redirect('../superadmin/dashboard.php');
+                    exit;
                 }
 
-                // Admin biasa
+                // Admin biasa (termasuk Admin UKM)
                 redirect('../admin/dashboard.php');
                 exit;
             }
