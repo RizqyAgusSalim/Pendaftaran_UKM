@@ -1,5 +1,5 @@
 <?php
-// admin/kelola_pendaftaran.php — KHUSUS ADMIN UKM
+session_start(); // ← WAJIB DI AWAL
 require_once '../config/database.php';
 require_once '../config/functions.php';
 
@@ -34,7 +34,6 @@ $nama_ukm = $stmt_ukm->fetchColumn() ?? "UKM Anda";
 if (isset($_GET['action']) && $_GET['action'] === 'approve' && isset($_GET['id'])) {
     $pendaftaran_id = (int)$_GET['id'];
 
-    // Validasi: pastikan pendaftaran ini milik UKM ini & status pending
     $stmt_check = $db->prepare("
         SELECT id FROM pendaftaran 
         WHERE id = :id AND ukm_id = :ukm_id AND status = 'pending'
@@ -186,46 +185,12 @@ $pendaftaran_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <body>
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar (sama seperti dashboard.php) -->
+            <!-- Sidebar terpusat -->
             <div class="col-md-3 col-lg-2 px-0">
-                <div class="sidebar">
-                    <div class="p-3 text-center border-bottom border-secondary">
-                        <h5 class="text-white mb-0">
-                            <i class="fas fa-university"></i> Admin UKM
-                        </h5>
-                        <small class="text-white-50">Politeknik Negeri Lampung</small>
-                    </div>
-                    <nav class="nav flex-column">
-                        <a class="nav-link" href="dashboard.php">
-                            <i class="fas fa-tachometer-alt me-2"></i> Dashboard
-                        </a>
-                        <a class="nav-link" href="kelola_ukm.php">
-                            <i class="fas fa-users me-2"></i> Kelola UKM
-                        </a>
-                        <a class="nav-link" href="kelola_kategori.php">
-                            <i class="fas fa-tags me-2"></i> Kategori UKM
-                        </a>
-                        <a class="nav-link" href="kelola_mahasiswa.php">
-                            <i class="fas fa-user-graduate me-2"></i> Data Mahasiswa
-                        </a>
-                        <a class="nav-link active" href="kelola_pendaftaran.php">
-                            <i class="fas fa-clipboard-list me-2"></i> Pendaftaran
-                        </a>
-                        <a class="nav-link" href="laporan.php">
-                            <i class="fas fa-chart-bar me-2"></i> Laporan
-                        </a>
-                        <div class="dropdown-divider bg-secondary"></div>
-                        <a class="nav-link" href="../index.php" target="_blank">
-                            <i class="fas fa-external-link-alt me-2"></i> Lihat Website
-                        </a>
-                        <a class="nav-link" href="../auth/logout.php">
-                            <i class="fas fa-sign-out-alt me-2"></i> Logout
-                        </a>
-                    </nav>
-                </div>
+                <?php include 'sidebar.php'; ?>
             </div>
 
-            <!-- Main Content -->
+            <!-- Konten Utama -->
             <div class="col-md-9 col-lg-10 main-content">
                 <div class="p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -239,30 +204,30 @@ $pendaftaran_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                     <!-- Filter -->
                     <div class="card mb-4">
-                    <div class="card-body">
-                        <div class="row align-items-center">
-                            <div class="col-md-6">
-                                <h5 class="mb-0">Filter Status:</h5>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="btn-group w-100" role="group">
-                                    <a href="kelola_pendaftaran.php" class="btn <?= empty($status_filter) ? 'btn-primary' : 'btn-outline-primary' ?>">
-                                        Semua
-                                    </a>
-                                    <a href="kelola_pendaftaran.php?status=pending" class="btn <?= $status_filter == 'pending' ? 'btn-warning' : 'btn-outline-warning' ?>">
-                                        Pending
-                                    </a>
-                                    <a href="kelola_pendaftaran.php?status=diterima" class="btn <?= $status_filter == 'diterima' ? 'btn-success' : 'btn-outline-success' ?>">
-                                        Diterima
-                                    </a>
-                                    <a href="kelola_pendaftaran.php?status=ditolak" class="btn <?= $status_filter == 'ditolak' ? 'btn-danger' : 'btn-outline-danger' ?>">
-                                        Ditolak
-                                    </a>
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-md-6">
+                                    <h5 class="mb-0">Filter Status:</h5>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="btn-group w-100" role="group">
+                                        <a href="kelola_pendaftaran.php" class="btn <?= empty($status_filter) ? 'btn-primary' : 'btn-outline-primary' ?>">
+                                            Semua
+                                        </a>
+                                        <a href="kelola_pendaftaran.php?status=pending" class="btn <?= $status_filter == 'pending' ? 'btn-warning' : 'btn-outline-warning' ?>">
+                                            Pending
+                                        </a>
+                                        <a href="kelola_pendaftaran.php?status=diterima" class="btn <?= $status_filter == 'diterima' ? 'btn-success' : 'btn-outline-success' ?>">
+                                            Diterima
+                                        </a>
+                                        <a href="kelola_pendaftaran.php?status=ditolak" class="btn <?= $status_filter == 'ditolak' ? 'btn-danger' : 'btn-outline-danger' ?>">
+                                            Ditolak
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
                     <!-- Tabel Pendaftaran -->
                     <div class="card shadow-sm">
@@ -298,108 +263,105 @@ $pendaftaran_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         <?php else: ?>
                                             <?php $no = 1; ?>
                                             <?php foreach ($pendaftaran_list as $p): ?>
-                                            <tr>
-                                                <td class="text-center"><?= $no++ ?></td>
-                                                <td>
-                                                    <div class="d-flex align-items-center">
-                                                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px; font-size: 0.9rem;">
-                                                            <?= strtoupper(substr(htmlspecialchars($p['nama']), 0, 2)) ?>
+                                                <?php
+                                                $status = strtolower($p['status']);
+                                                $class = match($status) {
+                                                    'pending' => 'badge-pending',
+                                                    'diterima' => 'badge-diterima',
+                                                    'ditolak' => 'badge-ditolak',
+                                                    default => 'bg-secondary text-white'
+                                                };
+                                                ?>
+                                                <tr>
+                                                    <td class="text-center"><?= $no++ ?></td>
+                                                    <td>
+                                                        <div class="d-flex align-items-center">
+                                                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px; font-size: 0.9rem;">
+                                                                <?= strtoupper(substr(htmlspecialchars($p['nama']), 0, 2)) ?>
+                                                            </div>
+                                                            <div class="ms-2">
+                                                                <strong><?= htmlspecialchars($p['nama']) ?></strong><br>
+                                                                <small class="text-muted"><?= htmlspecialchars($p['email']) ?></small>
+                                                            </div>
                                                         </div>
-                                                        <div class="ms-2">
-                                                            <strong><?= htmlspecialchars($p['nama']) ?></strong><br>
-                                                            <small class="text-muted"><?= htmlspecialchars($p['email']) ?></small>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td><span class="badge bg-light text-dark"><?= htmlspecialchars($p['nim']) ?></span></td>
-                                                <td><?= htmlspecialchars($p['jurusan']) ?></td>
-                                                <td><?= htmlspecialchars($p['no_telepon']) ?></td>
-                                                <td><?= formatTanggal($p['created_at']) ?></td>
-                                                <td>
-                                                    <?php
-                                                    $status = strtolower($p['status']);
-                                                    $class = match($status) {
-                                                        'pending' => 'badge-pending',
-                                                        'diterima' => 'badge-diterima',
-                                                        'ditolak' => 'badge-ditolak',
-                                                        default => 'bg-secondary text-white'
-                                                    };
-                                                    ?>
-                                                    <span class="badge <?= $class ?>"><?= ucfirst($p['status']) ?></span>
-                                                </td>
-                                                <td>
-                                                    <div class="btn-group btn-group-sm">
-                                                        <!-- Detail -->
-                                                        <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#modalDetail<?= $p['id'] ?>" title="Detail">
-                                                            <i class="fas fa-eye"></i>
-                                                        </button>
-                                                        <?php if ($p['status'] == 'pending'): ?>
-                                                            <!-- Terima -->
-                                                            <a href="?action=approve&id=<?= $p['id'] ?>" 
-                                                               class="btn btn-outline-success"
-                                                               onclick="return confirm('Terima pendaftaran dari <?= addslashes(htmlspecialchars($p['nama'])) ?>?')">
-                                                                <i class="fas fa-check"></i>
-                                                            </a>
-                                                            <!-- Tolak -->
-                                                            <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalReject<?= $p['id'] ?>" title="Tolak">
-                                                                <i class="fas fa-times"></i>
+                                                    </td>
+                                                    <td><span class="badge bg-light text-dark"><?= htmlspecialchars($p['nim']) ?></span></td>
+                                                    <td><?= htmlspecialchars($p['jurusan']) ?></td>
+                                                    <td><?= htmlspecialchars($p['no_telepon']) ?></td>
+                                                    <td><?= formatTanggal($p['created_at']) ?></td>
+                                                    <td>
+                                                        <span class="badge <?= $class ?>"><?= ucfirst($p['status']) ?></span>
+                                                    </td>
+                                                    <td>
+                                                        <div class="btn-group btn-group-sm">
+                                                            <button class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#modalDetail<?= $p['id'] ?>" title="Detail">
+                                                                <i class="fas fa-eye"></i>
                                                             </button>
-                                                        <?php endif; ?>
-                                                    </div>
-
-                                                    <!-- Modal Detail -->
-                                                    <div class="modal fade" id="modalDetail<?= $p['id'] ?>" tabindex="-1">
-                                                        <div class="modal-dialog">
-                                                            <div class="modal-content">
-                                                                <div class="modal-header">
-                                                                    <h5 class="modal-title">Detail Pendaftaran</h5>
-                                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                                                </div>
-                                                                <div class="modal-body">
-                                                                    <table class="table table-sm">
-                                                                        <tr><th width="40%">Nama</th><td><?= htmlspecialchars($p['nama']) ?></td></tr>
-                                                                        <tr><th>NIM</th><td><?= htmlspecialchars($p['nim']) ?></td></tr>
-                                                                        <tr><th>Email</th><td><?= htmlspecialchars($p['email']) ?></td></tr>
-                                                                        <tr><th>No HP</th><td><?= htmlspecialchars($p['no_telepon']) ?></td></tr>
-                                                                        <tr><th>Jurusan</th><td><?= htmlspecialchars($p['jurusan']) ?></td></tr>
-                                                                        <tr><th>Angkatan</th><td><?= htmlspecialchars($p['angkatan']) ?></td></tr>
-                                                                        <tr><th>Alasan Bergabung</th><td><?= nl2br(htmlspecialchars($p['alasan_bergabung'])) ?></td></tr>
-                                                                        <tr><th>Status</th><td><span class="badge <?= $class ?>"><?= ucfirst($p['status']) ?></span></td></tr>
-                                                                        <?php if ($p['status'] === 'ditolak' && !empty($p['catatan_admin'])): ?>
-                                                                            <tr><th>Alasan Penolakan</th><td><?= nl2br(htmlspecialchars($p['catatan_admin'])) ?></td></tr>
-                                                                        <?php endif; ?>
-                                                                    </table>
-                                                                </div>
-                                                            </div>
+                                                            <?php if ($p['status'] == 'pending'): ?>
+                                                                <a href="?action=approve&id=<?= $p['id'] ?>" 
+                                                                   class="btn btn-outline-success"
+                                                                   onclick="return confirm('Terima pendaftaran dari <?= addslashes(htmlspecialchars($p['nama'])) ?>?')">
+                                                                    <i class="fas fa-check"></i>
+                                                                </a>
+                                                                <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalReject<?= $p['id'] ?>" title="Tolak">
+                                                                    <i class="fas fa-times"></i>
+                                                                </button>
+                                                            <?php endif; ?>
                                                         </div>
-                                                    </div>
 
-                                                    <!-- Modal Tolak -->
-                                                    <div class="modal fade" id="modalReject<?= $p['id'] ?>" tabindex="-1">
-                                                        <div class="modal-dialog">
-                                                            <div class="modal-content">
-                                                                <div class="modal-header bg-danger text-white">
-                                                                    <h5 class="modal-title">Tolak Pendaftaran</h5>
-                                                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                                                                </div>
-                                                                <form method="POST" action="?action=reject&id=<?= $p['id'] ?>">
+                                                        <!-- Modal Detail -->
+                                                        <div class="modal fade" id="modalDetail<?= $p['id'] ?>" tabindex="-1">
+                                                            <div class="modal-dialog">
+                                                                <div class="modal-content">
+                                                                    <div class="modal-header">
+                                                                        <h5 class="modal-title">Detail Pendaftaran</h5>
+                                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                                    </div>
                                                                     <div class="modal-body">
-                                                                        <p>Tolak pendaftaran dari <strong><?= htmlspecialchars($p['nama']) ?></strong>?</p>
-                                                                        <div class="mb-3">
-                                                                            <label>Alasan Penolakan</label>
-                                                                            <textarea name="alasan_ditolak" class="form-control" rows="3" required>Tidak memenuhi persyaratan</textarea>
-                                                                        </div>
+                                                                        <table class="table table-sm">
+                                                                            <tr><th width="40%">Nama</th><td><?= htmlspecialchars($p['nama']) ?></td></tr>
+                                                                            <tr><th>NIM</th><td><?= htmlspecialchars($p['nim']) ?></td></tr>
+                                                                            <tr><th>Email</th><td><?= htmlspecialchars($p['email']) ?></td></tr>
+                                                                            <tr><th>No HP</th><td><?= htmlspecialchars($p['no_telepon']) ?></td></tr>
+                                                                            <tr><th>Jurusan</th><td><?= htmlspecialchars($p['jurusan']) ?></td></tr>
+                                                                            <tr><th>Angkatan</th><td><?= htmlspecialchars($p['angkatan']) ?></td></tr>
+                                                                            <tr><th>Alasan Bergabung</th><td><?= nl2br(htmlspecialchars($p['alasan_bergabung'])) ?></td></tr>
+                                                                            <tr><th>Status</th><td><span class="badge <?= $class ?>"><?= ucfirst($p['status']) ?></span></td></tr>
+                                                                            <?php if ($p['status'] === 'ditolak' && !empty($p['catatan_admin'])): ?>
+                                                                                <tr><th>Alasan Penolakan</th><td><?= nl2br(htmlspecialchars($p['catatan_admin'])) ?></td></tr>
+                                                                            <?php endif; ?>
+                                                                        </table>
                                                                     </div>
-                                                                    <div class="modal-footer">
-                                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                                                                        <button type="submit" class="btn btn-danger">Tolak</button>
-                                                                    </div>
-                                                                </form>
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
+
+                                                        <!-- Modal Tolak -->
+                                                        <div class="modal fade" id="modalReject<?= $p['id'] ?>" tabindex="-1">
+                                                            <div class="modal-dialog">
+                                                                <div class="modal-content">
+                                                                    <div class="modal-header bg-danger text-white">
+                                                                        <h5 class="modal-title">Tolak Pendaftaran</h5>
+                                                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                                                    </div>
+                                                                    <form method="POST" action="?action=reject&id=<?= $p['id'] ?>">
+                                                                        <div class="modal-body">
+                                                                            <p>Tolak pendaftaran dari <strong><?= htmlspecialchars($p['nama']) ?></strong>?</p>
+                                                                            <div class="mb-3">
+                                                                                <label>Alasan Penolakan</label>
+                                                                                <textarea name="alasan_ditolak" class="form-control" rows="3" required>Tidak memenuhi persyaratan</textarea>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="modal-footer">
+                                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                                                                            <button type="submit" class="btn btn-danger">Tolak</button>
+                                                                        </div>
+                                                                    </form>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
                                     </tbody>
@@ -411,6 +373,7 @@ $pendaftaran_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         </div>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

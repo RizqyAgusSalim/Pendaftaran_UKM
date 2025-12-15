@@ -1,5 +1,5 @@
 <?php
-// admin/dashboard.php — KHUSUS ADMIN UKM (DIPERBAIKI UNTUK SUPERADMIN)
+session_start(); // Pastikan session dimulai
 require_once '../config/database.php';
 require_once '../config/functions.php';
 
@@ -11,22 +11,19 @@ if (!isLoggedIn() || !isAdmin()) {
 $database = new Database();
 $db = $database->getConnection();
 
-// --- ✅ PERBAIKAN UTAMA: Dukungan untuk Superadmin ---
+// --- Dukungan untuk Superadmin ---
 $nama_ukm = "UKM Anda";
 $ukm_id = null;
 
 if ($_SESSION['user_role'] === 'superadmin') {
-    // Superadmin: tidak perlu ukm_id, lihat semua data
     $nama_ukm = "Semua UKM (Mode Admin - Super Admin)";
 } else {
-    // Admin biasa: harus punya ukm_id
     if (!isset($_SESSION['ukm_id']) || $_SESSION['ukm_id'] <= 0) {
         showAlert('Akses ditolak: Anda bukan admin UKM.', 'danger');
         redirect('../auth/logout.php');
     }
     $ukm_id = (int)$_SESSION['ukm_id'];
     
-    // Ambil nama UKM untuk admin biasa
     $stmt_ukm = $db->prepare("SELECT nama_ukm FROM ukm WHERE id = :ukm_id");
     $stmt_ukm->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
     $stmt_ukm->execute();
@@ -36,15 +33,11 @@ if ($_SESSION['user_role'] === 'superadmin') {
 // ----------------------------------------------------
 // STATISTIK
 // ----------------------------------------------------
-$stats = [];
+$stats = [
+    'total_ukm' => $db->query("SELECT COUNT(*) FROM ukm")->fetchColumn(),
+    'total_mahasiswa' => $db->query("SELECT COUNT(*) FROM mahasiswa")->fetchColumn(),
+];
 
-// Total UKM (semua)
-$stats['total_ukm'] = $db->query("SELECT COUNT(*) FROM ukm")->fetchColumn();
-
-// Total mahasiswa (semua)
-$stats['total_mahasiswa'] = $db->query("SELECT COUNT(*) FROM mahasiswa")->fetchColumn();
-
-// Total pendaftaran
 if ($ukm_id !== null) {
     $stmt = $db->prepare("SELECT COUNT(*) FROM pendaftaran WHERE ukm_id = :ukm_id");
     $stmt->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
@@ -56,7 +49,6 @@ if ($ukm_id !== null) {
     $stmt2->execute();
     $stats['pending_pendaftaran'] = $stmt2->fetchColumn();
 } else {
-    // Superadmin: lihat semua
     $stats['total_pendaftaran'] = $db->query("SELECT COUNT(*) FROM pendaftaran")->fetchColumn();
     $stats['pending_pendaftaran'] = $db->query("SELECT COUNT(*) FROM pendaftaran WHERE status = 'pending'")->fetchColumn();
 }
@@ -66,8 +58,7 @@ if ($ukm_id !== null) {
 // ----------------------------------------------------
 if ($ukm_id !== null) {
     $query = "
-        SELECT 
-            p.id, p.status, p.created_at, m.nama, m.nim, u.nama_ukm 
+        SELECT p.id, p.status, p.created_at, m.nama, m.nim, u.nama_ukm 
         FROM pendaftaran p 
         JOIN mahasiswa m ON p.mahasiswa_id = m.id 
         JOIN ukm u ON p.ukm_id = u.id 
@@ -77,10 +68,8 @@ if ($ukm_id !== null) {
     $stmt = $db->prepare($query);
     $stmt->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
 } else {
-    // Superadmin: lihat semua UKM
     $query = "
-        SELECT 
-            p.id, p.status, p.created_at, m.nama, m.nim, u.nama_ukm 
+        SELECT p.id, p.status, p.created_at, m.nama, m.nim, u.nama_ukm 
         FROM pendaftaran p 
         JOIN mahasiswa m ON p.mahasiswa_id = m.id 
         JOIN ukm u ON p.ukm_id = u.id 
@@ -92,10 +81,9 @@ $stmt->execute();
 $recent_pendaftaran = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fungsi Helper untuk Badge Status
-function getStatusBadge(string $status): string
-{
+function getStatusBadge(string $status): string {
     $status = strtolower($status);
-    $class = match($status){
+    $class = match($status) {
         'pending' => 'badge-pending text-dark',
         'diterima' => 'badge-diterima text-white',
         'ditolak' => 'badge-ditolak text-white',
@@ -165,50 +153,22 @@ function getStatusBadge(string $status): string
 <body>
     <div class="container-fluid">
         <div class="row">
+            <!-- Sidebar dipanggil dari file terpisah -->
             <div class="col-md-3 col-lg-2 px-0">
-                <div class="sidebar">
-                    <div class="p-3 text-center border-bottom border-secondary">
-                        <h5 class="text-white mb-0">
-                            <i class="fas fa-university"></i> Admin UKM
-                        </h5>
-                        <small class="text-white-50">Politeknik Negeri Lampung</small>
-                    </div>
-                    <nav class="nav flex-column">
-                        <a class="nav-link active" href="dashboard.php">
-                            <i class="fas fa-tachometer-alt me-2"></i> Dashboard
-                        </a>
-                        <a class="nav-link" href="kelola_ukm.php">
-                            <i class="fas fa-users me-2"></i> Kelola UKM
-                        </a>
-                        <a class="nav-link" href="kelola_kategori.php">
-                            <i class="fas fa-tags me-2"></i> Kategori UKM
-                        </a>
-                        <a class="nav-link" href="kelola_mahasiswa.php">
-                            <i class="fas fa-user-graduate me-2"></i> Data Mahasiswa
-                        </a>
-                        <a class="nav-link" href="kelola_pendaftaran.php">
-                            <i class="fas fa-clipboard-list me-2"></i> Pendaftaran
-                        </a>
-                        <a class="nav-link" href="laporan.php">
-                            <i class="fas fa-chart-bar me-2"></i> Laporan
-                        </a>
-                        <div class="dropdown-divider bg-secondary"></div>
-                        <a class="nav-link" href="../index.php" target="_blank">
-                            <i class="fas fa-external-link-alt me-2"></i> Lihat Website
-                        </a>
-                        <a class="nav-link" href="../auth/logout.php">
-                            <i class="fas fa-sign-out-alt me-2"></i> Logout
-                        </a>
-                    </nav>
-                </div>
+                <?php include 'sidebar.php'; ?>
             </div>
 
+            <!-- Konten Utama -->
             <div class="col-md-9 col-lg-10 main-content">
                 <div class="p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <div>
                             <h2>Dashboard Admin</h2>
-                            <p class="text-muted mb-0">Selamat datang, <?= ($_SESSION['user_role'] === 'superadmin') ? '<strong>Super Admin</strong>' : 'Admin'; ?> <strong><?= htmlspecialchars($nama_ukm) ?></strong>!</p>
+                            <p class="text-muted mb-0">
+                                Selamat datang, 
+                                <?= ($_SESSION['user_role'] === 'superadmin') ? '<strong>Super Admin</strong>' : 'Admin'; ?> 
+                                <strong><?= htmlspecialchars($nama_ukm) ?></strong>!
+                            </p>
                         </div>
                         <div class="text-end">
                             <small class="text-muted">
@@ -219,14 +179,13 @@ function getStatusBadge(string $status): string
 
                     <?php displayAlert(); ?>
 
+                    <!-- Statistik -->
                     <div class="row mb-4">
                         <div class="col-lg-3 col-md-6 mb-3">
                             <div class="card stat-card border-0">
                                 <div class="card-body">
                                     <div class="d-flex align-items-center">
-                                        <div class="stat-icon" style="background: #3498db;">
-                                            <i class="fas fa-building"></i>
-                                        </div>
+                                        <div class="stat-icon" style="background: #3498db;"><i class="fas fa-building"></i></div>
                                         <div class="ms-3">
                                             <h3 class="mb-0"><?= $stats['total_ukm'] ?></h3>
                                             <p class="text-muted mb-0">Total UKM</p>
@@ -235,14 +194,11 @@ function getStatusBadge(string $status): string
                                 </div>
                             </div>
                         </div>
-                        
                         <div class="col-lg-3 col-md-6 mb-3">
                             <div class="card stat-card border-0">
                                 <div class="card-body">
                                     <div class="d-flex align-items-center">
-                                        <div class="stat-icon" style="background: #28a745;">
-                                            <i class="fas fa-user-graduate"></i>
-                                        </div>
+                                        <div class="stat-icon" style="background: #28a745;"><i class="fas fa-user-graduate"></i></div>
                                         <div class="ms-3">
                                             <h3 class="mb-0"><?= $stats['total_mahasiswa'] ?></h3>
                                             <p class="text-muted mb-0">Mahasiswa Terdaftar</p>
@@ -251,14 +207,11 @@ function getStatusBadge(string $status): string
                                 </div>
                             </div>
                         </div>
-                        
                         <div class="col-lg-3 col-md-6 mb-3">
                             <div class="card stat-card border-0">
                                 <div class="card-body">
                                     <div class="d-flex align-items-center">
-                                        <div class="stat-icon" style="background: #17a2b8;">
-                                            <i class="fas fa-clipboard-list"></i>
-                                        </div>
+                                        <div class="stat-icon" style="background: #17a2b8;"><i class="fas fa-clipboard-list"></i></div>
                                         <div class="ms-3">
                                             <h3 class="mb-0"><?= $stats['total_pendaftaran'] ?></h3>
                                             <p class="text-muted mb-0">Total Pendaftaran</p>
@@ -267,14 +220,11 @@ function getStatusBadge(string $status): string
                                 </div>
                             </div>
                         </div>
-                        
                         <div class="col-lg-3 col-md-6 mb-3">
                             <div class="card stat-card border-0">
                                 <div class="card-body">
                                     <div class="d-flex align-items-center">
-                                        <div class="stat-icon" style="background: #ffc107;">
-                                            <i class="fas fa-clock"></i>
-                                        </div>
+                                        <div class="stat-icon" style="background: #ffc107;"><i class="fas fa-clock"></i></div>
                                         <div class="ms-3">
                                             <h3 class="mb-0"><?= $stats['pending_pendaftaran'] ?></h3>
                                             <p class="text-muted mb-0">Pending Approval</p>
@@ -285,34 +235,43 @@ function getStatusBadge(string $status): string
                         </div>
                     </div>
 
-                    <!-- ✅ QUICK ACTIONS + TOMBOL KEMBALI SUPERADMIN -->
+                    <!-- Quick Actions -->
                     <div class="row mb-4">
                         <div class="col-12">
                             <div class="card border-0 shadow-sm">
                                 <div class="card-header bg-white">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-bolt text-warning"></i> Quick Actions
-                                    </h5>
+                                    <h5 class="mb-0"><i class="fas fa-bolt text-warning"></i> Quick Actions</h5>
                                 </div>
                                 <div class="card-body">
                                     <div class="row">
-                                        <div class="col-md-4 mb-2">
+                                        <div class="col-md-3 mb-2">
                                             <a href="kelola_kategori.php?action=add" class="btn btn-success w-100">
                                                 <i class="fas fa-tag"></i> Tambah Kategori
                                             </a>
                                         </div>
-                                        <div class="col-md-4 mb-2">
+                                        <div class="col-md-3 mb-2">
                                             <a href="kelola_pendaftaran.php" class="btn btn-warning w-100">
                                                 <i class="fas fa-check-circle"></i> Review Pendaftaran
                                             </a>
                                         </div>
-                                        <div class="col-md-4 mb-2">
-                                            <a href="laporan.php" class="btn btn-info w-100">
-                                                <i class="fas fa-download"></i> Export Laporan
-                                            </a>
-                                        </div>
-
-                                        <!-- ✅ TOMBOL KEMBALI KE SUPER ADMIN (Hanya untuk Superadmin) -->
+                                        <?php if ($_SESSION['user_role'] !== 'superadmin'): ?>
+                                            <div class="col-md-3 mb-2">
+                                                <a href="tambah_berita.php" class="btn btn-primary w-100">
+                                                    <i class="fas fa-plus-circle"></i> Berita Baru
+                                                </a>
+                                            </div>
+                                            <div class="col-md-3 mb-2">
+                                                <a href="tambah_kegiatan.php" class="btn btn-secondary w-100">
+                                                    <i class="fas fa-calendar-plus"></i> Kegiatan Baru
+                                                </a>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="col-md-6 mb-2">
+                                                <a href="laporan.php" class="btn btn-info w-100">
+                                                    <i class="fas fa-download"></i> Export Laporan
+                                                </a>
+                                            </div>
+                                        <?php endif; ?>
                                         <?php if ($_SESSION['user_role'] === 'superadmin'): ?>
                                             <div class="col-12 mt-3">
                                                 <a href="../superadmin/dashboard.php" class="btn btn-outline-dark w-100">
@@ -326,13 +285,12 @@ function getStatusBadge(string $status): string
                         </div>
                     </div>
 
+                    <!-- Pendaftaran Terbaru -->
                     <div class="row">
                         <div class="col-12">
                             <div class="card border-0 shadow-sm">
                                 <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">
-                                        <i class="fas fa-clock text-primary"></i> Pendaftaran Terbaru
-                                    </h5>
+                                    <h5 class="mb-0"><i class="fas fa-clock text-primary"></i> Pendaftaran Terbaru</h5>
                                     <a href="kelola_pendaftaran.php" class="btn btn-sm btn-outline-primary">
                                         Lihat Semua <i class="fas fa-arrow-right"></i>
                                     </a>
@@ -359,42 +317,32 @@ function getStatusBadge(string $status): string
                                                         </td>
                                                     </tr>
                                                 <?php else: ?>
-                                                    <?php foreach ($recent_pendaftaran as $pendaftaran): ?>
+                                                    <?php foreach ($recent_pendaftaran as $p): ?>
                                                         <tr>
                                                             <td>
                                                                 <div class="d-flex align-items-center">
                                                                     <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 35px; height: 35px; font-size: 0.8rem;">
-                                                                        <?= strtoupper(substr(htmlspecialchars($pendaftaran['nama']), 0, 2)) ?>
+                                                                        <?= strtoupper(substr(htmlspecialchars($p['nama']), 0, 2)) ?>
                                                                     </div>
-                                                                    <div class="ms-2">
-                                                                        <div class="fw-bold"><?= htmlspecialchars($pendaftaran['nama']) ?></div>
-                                                                    </div>
+                                                                    <div class="ms-2 fw-bold"><?= htmlspecialchars($p['nama']) ?></div>
                                                                 </div>
                                                             </td>
-                                                            <td>
-                                                                <span class="badge bg-light text-dark"><?= htmlspecialchars($pendaftaran['nim']) ?></span>
-                                                            </td>
-                                                            <td><?= htmlspecialchars($pendaftaran['nama_ukm']) ?></td>
-                                                            <td>
-                                                                <small class="text-muted">
-                                                                    <?= formatTanggal($pendaftaran['created_at']) ?>
-                                                                </small>
-                                                            </td>
-                                                            <td>
-                                                                <?= getStatusBadge($pendaftaran['status']) ?>
-                                                            </td>
+                                                            <td><span class="badge bg-light text-dark"><?= htmlspecialchars($p['nim']) ?></span></td>
+                                                            <td><?= htmlspecialchars($p['nama_ukm']) ?></td>
+                                                            <td><small class="text-muted"><?= formatTanggal($p['created_at']) ?></small></td>
+                                                            <td><?= getStatusBadge($p['status']) ?></td>
                                                             <td>
                                                                 <div class="btn-group btn-group-sm">
-                                                                    <a href="kelola_pendaftaran.php?action=view&id=<?= $pendaftaran['id'] ?>" class="btn btn-outline-primary" title="Lihat Detail">
+                                                                    <a href="kelola_pendaftaran.php?action=view&id=<?= $p['id'] ?>" class="btn btn-outline-primary" title="Lihat Detail">
                                                                         <i class="fas fa-eye"></i>
                                                                     </a>
-                                                                    <?php if ($pendaftaran['status'] == 'pending'): ?>
-                                                                        <a href="kelola_pendaftaran.php?action=approve&id=<?= $pendaftaran['id'] ?>" class="btn btn-outline-success" title="Terima"
-                                                                           onclick="return confirm('Terima pendaftaran dari <?= htmlspecialchars(addslashes($pendaftaran['nama'])) ?>?')">
+                                                                    <?php if ($p['status'] == 'pending'): ?>
+                                                                        <a href="kelola_pendaftaran.php?action=approve&id=<?= $p['id'] ?>" class="btn btn-outline-success" title="Terima"
+                                                                            onclick="return confirm('Terima pendaftaran dari <?= htmlspecialchars(addslashes($p['nama'])) ?>?')">
                                                                             <i class="fas fa-check"></i>
                                                                         </a>
-                                                                        <a href="kelola_pendaftaran.php?action=reject&id=<?= $pendaftaran['id'] ?>" class="btn btn-outline-danger" title="Tolak"
-                                                                            onclick="return confirm('Tolak pendaftaran dari <?= htmlspecialchars(addslashes($pendaftaran['nama'])) ?>?')">
+                                                                        <a href="kelola_pendaftaran.php?action=reject&id=<?= $p['id'] ?>" class="btn btn-outline-danger" title="Tolak"
+                                                                            onclick="return confirm('Tolak pendaftaran dari <?= htmlspecialchars(addslashes($p['nama'])) ?>?')">
                                                                             <i class="fas fa-times"></i>
                                                                         </a>
                                                                     <?php endif; ?>

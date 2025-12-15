@@ -1,5 +1,5 @@
 <?php
-// admin/laporan.php
+session_start(); // ← WAJIB DI AWAL
 require_once '../config/database.php';
 require_once '../config/functions.php';
 
@@ -103,26 +103,18 @@ if (isset($_GET['download']) && $_GET['download'] == 'excel') {
 }
 
 // =================================================================
-// PROSES DOWNLOAD PDF (Langsung Download - Layout Teks Bersih)
+// PROSES DOWNLOAD PDF
 // =================================================================
 if (isset($_GET['download']) && $_GET['download'] == 'pdf') {
-    // Load TCPDF via Composer
     require_once __DIR__ . '/../vendor/autoload.php';
 
     $pdf = new \TCPDF('P', PDF_UNIT, 'A4', true, 'UTF-8', false);
-
-    // Nonaktifkan header & footer otomatis
     $pdf->setPrintHeader(false);
     $pdf->setPrintFooter(false);
-
-    // Margin yang seimbang
     $pdf->SetMargins(15, 15, 15);
     $pdf->SetAutoPageBreak(TRUE, 15);
-
-    // Tambah halaman
     $pdf->AddPage();
 
-    // Judul Laporan
     $pdf->SetFont('helvetica', 'B', 16);
     $pdf->Cell(0, 8, 'Laporan Pendaftaran UKM', 0, 1, 'C');
     $pdf->SetFont('helvetica', '', 11);
@@ -130,22 +122,15 @@ if (isset($_GET['download']) && $_GET['download'] == 'pdf') {
     $pdf->Cell(0, 5, 'Tanggal: ' . date('d M Y'), 0, 1, 'C');
     $pdf->Ln(6);
 
-    // Lebar kolom (Total = 180 untuk A4 dengan margin 15)
-    $w = array(40, 23, 37, 42, 18, 20); // Total = 180
-
-    // Hitung posisi X untuk center tabel
+    $w = array(40, 23, 37, 42, 18, 20);
     $pageWidth = $pdf->getPageWidth();
     $tableWidth = array_sum($w);
     $startX = ($pageWidth - $tableWidth) / 2;
 
-    // Set posisi X ke tengah
     $pdf->SetX($startX);
-
-    // Header Tabel dengan Background
     $pdf->SetFillColor(220, 220, 220);
     $pdf->SetFont('helvetica', 'B', 9);
     $pdf->SetLineWidth(0.3);
-    
     $pdf->Cell($w[0], 8, 'Nama', 1, 0, 'C', true);
     $pdf->Cell($w[1], 8, 'NIM', 1, 0, 'C', true);
     $pdf->Cell($w[2], 8, 'Jurusan', 1, 0, 'C', true);
@@ -153,18 +138,11 @@ if (isset($_GET['download']) && $_GET['download'] == 'pdf') {
     $pdf->Cell($w[4], 8, 'Status', 1, 0, 'C', true);
     $pdf->Cell($w[5], 8, 'Tanggal', 1, 1, 'C', true);
 
-    // Isi Data
     $pdf->SetFont('helvetica', '', 8);
-    
     foreach ($pendaftaran_list as $index => $p) {
-        // Cek apakah perlu page break
         if ($pdf->GetY() > 260) {
             $pdf->AddPage();
-            
-            // Set posisi X ke tengah untuk halaman baru
             $pdf->SetX($startX);
-            
-            // Ulangi header di halaman baru
             $pdf->SetFillColor(220, 220, 220);
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell($w[0], 8, 'Nama', 1, 0, 'C', true);
@@ -176,63 +154,27 @@ if (isset($_GET['download']) && $_GET['download'] == 'pdf') {
             $pdf->SetFont('helvetica', '', 8);
         }
 
-        // Alternate row color
-        if ($index % 2 == 0) {
-            $pdf->SetFillColor(255, 255, 255);
-        } else {
-            $pdf->SetFillColor(248, 248, 248);
-        }
-
-        // Hitung tinggi baris berdasarkan konten terpanjang
-        $nb = array();
-        $nb[0] = $pdf->getNumLines(htmlspecialchars($p['nama']), $w[0]);
-        $nb[1] = $pdf->getNumLines(htmlspecialchars($p['nim']), $w[1]);
-        $nb[2] = $pdf->getNumLines(htmlspecialchars($p['jurusan']), $w[2]);
-        $nb[3] = $pdf->getNumLines(htmlspecialchars($p['nama_ukm']), $w[3]);
-        $nb[4] = $pdf->getNumLines(ucfirst($p['status']), $w[4]);
-        $nb[5] = $pdf->getNumLines(formatTanggal($p['created_at']), $w[5]);
-        
-        $h = 5 * max($nb); // Tinggi baris dinamis
-        if ($h < 7) $h = 7; // Minimal tinggi 7
-
-        // Simpan posisi awal (centered)
+        $fill = ($index % 2 == 0) ? [255,255,255] : [248,248,248];
         $y = $pdf->GetY();
+        $h = 7;
 
-        // Nama
         $pdf->MultiCell($w[0], $h, htmlspecialchars($p['nama']), 1, 'L', true, 0, $startX, $y, true, 0, false, true, $h, 'M');
-        
-        // NIM
         $pdf->MultiCell($w[1], $h, htmlspecialchars($p['nim']), 1, 'C', true, 0, $startX + $w[0], $y, true, 0, false, true, $h, 'M');
-        
-        // Jurusan
         $pdf->MultiCell($w[2], $h, htmlspecialchars($p['jurusan']), 1, 'L', true, 0, $startX + $w[0] + $w[1], $y, true, 0, false, true, $h, 'M');
-        
-        // UKM
         $pdf->MultiCell($w[3], $h, htmlspecialchars($p['nama_ukm']), 1, 'L', true, 0, $startX + $w[0] + $w[1] + $w[2], $y, true, 0, false, true, $h, 'M');
-        
-        // Status
         $pdf->MultiCell($w[4], $h, ucfirst($p['status']), 1, 'C', true, 0, $startX + $w[0] + $w[1] + $w[2] + $w[3], $y, true, 0, false, true, $h, 'M');
-        
-        // Tanggal
         $pdf->MultiCell($w[5], $h, formatTanggal($p['created_at']), 1, 'C', true, 0, $startX + $w[0] + $w[1] + $w[2] + $w[3] + $w[4], $y, true, 0, false, true, $h, 'M');
-        
-        // Pindah ke baris berikutnya
+
         $pdf->Ln($h);
-        
-        // Set X kembali ke tengah untuk baris berikutnya
         $pdf->SetX($startX);
     }
 
-    // Footer dengan total (centered)
     $pdf->Ln(3);
     $pdf->SetFont('helvetica', 'B', 10);
     $pdf->SetX($startX);
     $pdf->Cell($tableWidth, 6, 'Total Pendaftaran: ' . count($pendaftaran_list), 0, 1, 'L');
 
-    // PENTING: Bersihkan output buffer sebelum generate PDF
     if (ob_get_contents()) ob_end_clean();
-    
-    // Output: Langsung download
     $pdf->Output('laporan_pendaftaran_' . date('Y-m-d') . '.pdf', 'D');
     exit();
 }
@@ -277,47 +219,12 @@ if (isset($_GET['download']) && $_GET['download'] == 'pdf') {
 <body>
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar -->
+            <!-- Sidebar terpusat -->
             <div class="col-md-3 col-lg-2 px-0">
-                <div class="sidebar">
-                    <div class="p-3 text-center border-bottom border-secondary">
-                        <h5 class="text-white mb-0">
-                            <i class="fas fa-university"></i> 
-                            <?= $is_ukm_admin ? 'Admin UKM' : 'Admin Pusat' ?>
-                        </h5>
-                        <small class="text-white-50">Politeknik Negeri Lampung</small>
-                    </div>
-                    <nav class="nav flex-column">
-                        <a class="nav-link" href="dashboard.php">
-                            <i class="fas fa-tachometer-alt me-2"></i> Dashboard
-                        </a>
-                        <a class="nav-link" href="kelola_ukm.php">
-                            <i class="fas fa-users me-2"></i> Kelola UKM
-                        </a>
-                        <a class="nav-link" href="kelola_kategori.php">
-                            <i class="fas fa-tags me-2"></i> Kategori UKM
-                        </a>
-                        <a class="nav-link" href="kelola_mahasiswa.php">
-                            <i class="fas fa-user-graduate me-2"></i> Data Mahasiswa
-                        </a>
-                        <a class="nav-link" href="kelola_pendaftaran.php">
-                            <i class="fas fa-clipboard-list me-2"></i> Pendaftaran
-                        </a>
-                        <a class="nav-link active" href="laporan.php">
-                            <i class="fas fa-chart-bar me-2"></i> Laporan
-                        </a>
-                        <div class="dropdown-divider bg-secondary"></div>
-                        <a class="nav-link" href="../index.php" target="_blank">
-                            <i class="fas fa-external-link-alt me-2"></i> Lihat Website
-                        </a>
-                        <a class="nav-link" href="../auth/logout.php">
-                            <i class="fas fa-sign-out-alt me-2"></i> Logout
-                        </a>
-                    </nav>
-                </div>
+                <?php include 'sidebar.php'; ?>
             </div>
 
-            <!-- Main Content -->
+            <!-- Konten Utama -->
             <div class="col-md-9 col-lg-10 main-content">
                 <div class="p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4">

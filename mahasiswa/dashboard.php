@@ -1,5 +1,5 @@
 <?php
-// Dashboard Mahasiswa - versi FINAL dengan desain UKM utuh
+// Dashboard Mahasiswa - versi FINAL
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -44,7 +44,7 @@ if (!$mahasiswa) {
     exit;
 }
 
-// Ambil pendaftaran dengan status_keanggotaan
+// Ambil pendaftaran
 $sql = "
     SELECT 
         p.id AS pendaftaran_id,
@@ -78,34 +78,29 @@ foreach ($pendaftaran_saya as $p) {
 }
 $total_pendaftaran = count($pendaftaran_saya);
 
-// Ambil UKM tersedia (sama seperti versi awal Anda)
+// Ambil SEMUA UKM aktif (sesuai struktur database Anda)
 $stmt = $db->prepare("
     SELECT 
-        u.id, u.nama_ukm, u.deskripsi, k.nama_kategori,
-        COUNT(DISTINCT p.id) AS total_pendaftar,
-        CASE WHEN EXISTS(
-            SELECT 1 FROM pendaftaran pu WHERE pu.ukm_id = u.id AND pu.mahasiswa_id = ?
-        ) THEN 1 ELSE 0 END AS sudah_daftar
+        u.id,
+        u.nama_ukm,
+        u.deskripsi,
+        u.logo,
+        k.nama_kategori
     FROM ukm u
     LEFT JOIN kategori_ukm k ON u.kategori_id = k.id
-    LEFT JOIN pendaftaran p ON u.id = p.ukm_id
     WHERE u.status = 'aktif'
-    GROUP BY u.id, u.nama_ukm, u.deskripsi, k.nama_kategori
     ORDER BY u.nama_ukm
-    LIMIT 6
 ");
-$stmt->execute([$mahasiswa_id]);
-$ukm_tersedia = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$stmt->execute();
+$semua_ukm = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Normalisasi data UKM
-foreach ($ukm_tersedia as &$ukm) {
-    $ukm['nama_ukm'] = $ukm['nama_ukm'] ?? 'UKM Tidak Diketahui';
-    $ukm['nama_kategori'] = $ukm['nama_kategori'] ?? 'Kategori Tidak Diketahui';
-    $ukm['deskripsi'] = $ukm['deskripsi'] ?? 'Tidak ada deskripsi';
-    $ukm['total_pendaftar'] = isset($ukm['total_pendaftar']) ? (int)$ukm['total_pendaftar'] : 0;
-    $ukm['sudah_daftar'] = isset($ukm['sudah_daftar']) ? (int)$ukm['sudah_daftar'] : 0;
-}
-unset($ukm);
+// Cek UKM mana yang sudah didaftar oleh mahasiswa
+$stmt_cek = $db->prepare("SELECT ukm_id FROM pendaftaran WHERE mahasiswa_id = ? AND status = 'diterima'");
+$stmt_cek->execute([$mahasiswa_id]);
+$ukm_diterima = $stmt_cek->fetchAll(PDO::FETCH_COLUMN);
+
+// Buat array untuk pengecekan cepat
+$ukm_diterima_set = array_flip($ukm_diterima);
 ?>
 
 <!DOCTYPE html>
@@ -115,8 +110,8 @@ unset($ukm);
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dashboard Mahasiswa - UKM Polinela</title>
-    <link href=" https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css " rel="stylesheet">
-    <link href=" https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css " rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -134,25 +129,36 @@ unset($ukm);
         .stats-card:hover { transform: translateY(-5px); }
         .stats-number { font-size: 2rem; font-weight: bold; color: #667eea; margin-bottom: 0.5rem; }
         .content-card { background: white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
-        @media (min-width: 992px) { .col-lg-8, .col-lg-4 { width: 100%; } }
         .btn-primary-custom { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 25px; padding: 0.8rem 2rem; font-weight: 600; color: white; text-decoration: none; transition: all 0.3s ease; }
         .btn-primary-custom:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3); color: white; }
         .empty-state { padding: 3rem; text-align: center; color: #6c757d; }
-        .ukm-item-card { background: #f8f9fc; border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; border: 1px solid #e3e6f0; transition: all 0.3s ease; }
-        .ukm-item-card:hover { background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-2px); }
-        .ukm-icon { width: 50px; height: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.2rem; margin-right: 1rem; flex-shrink: 0; }
-        .ukm-title { font-size: 1rem; font-weight: 600; color: #2d3748; margin-bottom: 0.5rem; line-height: 1.3; }
-        .ukm-meta { display: flex; gap: 0.8rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
-        .category-badge { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
-        .member-count { color: #718096; font-size: 0.8rem; font-weight: 500; display: flex; align-items: center; }
-        .ukm-description { color: #4a5568; font-size: 0.85rem; line-height: 1.4; margin-bottom: 1rem; }
-        .ukm-action { display: flex; align-items: center; }
-        .btn-daftar { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.5rem 1rem; border-radius: 20px; text-decoration: none; font-size: 0.8rem; font-weight: 600; transition: all 0.3s ease; border: none; display: inline-flex; align-items: center; }
-        .btn-daftar:hover { color: white; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); }
-        .status-badge { padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; display: inline-flex; align-items: center; }
-        .status-joined { background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; }
-        .btn-view-all { background: rgba(102, 126, 234, 0.1); color: #667eea; padding: 0.8rem 1.5rem; border-radius: 25px; text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.3s ease; display: inline-flex; align-items: center; border: 2px solid rgba(102, 126, 234, 0.2); }
-        .btn-view-all:hover { background: #667eea; color: white; border-color: #667eea; transform: translateY(-1px); }
+        .ukm-logo {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 50%;
+            margin-bottom: 15px;
+        }
+        .category-badge {
+            background: #3498db;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        .ukm-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            margin-bottom: 30px;
+        }
+        .ukm-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
     </style>
 </head>
 <body>
@@ -163,7 +169,6 @@ unset($ukm);
             </a>
             <div class="navbar-nav ms-auto">
                 <a class="nav-link" href="../index.php"><i class="fas fa-home me-1"></i>Beranda</a>
-                <!-- ✅ FITUR 1: Edit Profil -->
                 <a class="nav-link" href="edit_profil.php"><i class="fas fa-user-cog me-1"></i>Profil</a>
                 <a class="nav-link" href="../auth/logout.php"><i class="fas fa-sign-out-alt me-1"></i>Logout</a>
             </div>
@@ -175,7 +180,6 @@ unset($ukm);
             <div class="welcome-card">
                 <div class="row align-items-center">
                     <div class="col-md-2">
-                        <!-- Foto Profil -->
                         <?php
                             $foto_path = $mahasiswa['foto'] ?? '';
                             $default_foto = 'https://via.placeholder.com/150?text=No+Photo';
@@ -232,23 +236,16 @@ unset($ukm);
                 <div class="col-12">
                     <div class="content-card">
                         <div class="card-header bg-white border-0 p-4">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <h5 class="fw-bold mb-0">
-                                    <i class="fas fa-list-alt text-primary me-2"></i>Pendaftaran Saya
-                                </h5>
-                                <a href="daftar_ukm.php" class="btn-primary-custom btn-sm">
-                                    <i class="fas fa-plus me-1"></i>Daftar UKM
-                                </a>
-                            </div>
+                            <h5 class="fw-bold mb-0">
+                                <i class="fas fa-list-alt text-primary me-2"></i>Pendaftaran Saya
+                            </h5>
+                            <!-- ✅ TOMBOL "Daftar UKM" DIHAPUS SESUAI PERMINTAAN -->
                         </div>
                         <div class="card-body">
                             <?php if (empty($pendaftaran_saya)): ?>
                                 <div class="empty-state">
                                     <i class="fas fa-inbox fa-3x mb-3"></i>
                                     <h6>Anda belum mendaftar ke UKM manapun</h6>
-                                    <a href="daftar_ukm.php" class="btn-primary-custom mt-2">
-                                        <i class="fas fa-plus me-1"></i>Daftar UKM Sekarang
-                                    </a>
                                 </div>
                             <?php else: ?>
                                 <div class="table-responsive">
@@ -258,7 +255,7 @@ unset($ukm);
                                                 <th>UKM</th>
                                                 <th>Tanggal</th>
                                                 <th>Status</th>
-                                                <th>Aksi</th> <!-- ✅ Tambah kolom Aksi -->
+                                                <th>Aksi</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -283,7 +280,6 @@ unset($ukm);
                                                         $status_text = 'Ditolak';
                                                         $badge_class = 'bg-danger';
                                                     } elseif ($status === 'diterima') {
-                                                        // ✅ TAMPILKAN status_keanggotaan
                                                         if ($keanggotaan === 'cuti') {
                                                             $status_text = 'Cuti';
                                                             $badge_class = 'bg-info';
@@ -304,10 +300,13 @@ unset($ukm);
                                                     <td><?= $created_at ?></td>
                                                     <td><span class="badge <?= $badge_class ?>"><?= $status_text ?></span></td>
                                                     <td>
-                                                        <!-- ✅ FITUR 2: Lihat Detail -->
-                                                        <a href="detail_pendaftaran.php?id=<?= $p['pendaftaran_id'] ?>" class="btn btn-sm btn-outline-primary">
-                                                            <i class="fas fa-eye"></i>
-                                                        </a>
+                                                        <?php if ($status === 'diterima'): ?>
+                                                            <a href="detail_pendaftaran.php?id=<?= $p['pendaftaran_id'] ?>" class="btn btn-sm btn-primary">
+                                                                <i class="fas fa-id-card me-1"></i> Lihat KTM
+                                                            </a>
+                                                        <?php else: ?>
+                                                            <span class="text-muted">–</span>
+                                                        <?php endif; ?>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -319,64 +318,61 @@ unset($ukm);
                     </div>
                 </div>
 
-                <!-- ✅ UKM Tersedia: DESAIN ASLI DIPERTAHANKAN -->
+                <!-- ✅ UKM TERSEDIA: SESUAI DENGAN DATABASE & INDEX.PHP -->
                 <div class="col-12">
                     <div class="content-card">
                         <div class="card-header bg-white border-0 p-4">
                             <h5 class="fw-bold mb-0">
-                                <i class="fas fa-users text-success me-2"></i>UKM Tersedia (Rekomendasi)
+                                <i class="fas fa-users text-success me-2"></i>Daftar UKM
                             </h5>
                         </div>
                         <div class="card-body p-3">
-                            <?php if (empty($ukm_tersedia)): ?>
+                            <?php if (empty($semua_ukm)): ?>
                                 <div class="text-center py-4">
                                     <i class="fas fa-users text-muted fa-3x mb-3"></i>
                                     <p class="text-muted">Belum ada UKM tersedia</p>
                                 </div>
                             <?php else: ?>
-                                <div class="row">
-                                    <?php foreach ($ukm_tersedia as $ukm): ?>
+                                <div class="row g-4">
+                                    <?php foreach ($semua_ukm as $ukm): ?>
                                         <?php
                                             $ukm_id = (int)($ukm['id'] ?? 0);
                                             $ukm_nama = htmlspecialchars($ukm['nama_ukm'] ?? 'UKM Tidak Diketahui', ENT_QUOTES, 'UTF-8');
-                                            $ukm_kategori = htmlspecialchars($ukm['nama_kategori'] ?? 'Kategori Tidak Diketahui', ENT_QUOTES, 'UTF-8');
+                                            $ukm_kategori = htmlspecialchars($ukm['nama_kategori'] ?? 'Umum', ENT_QUOTES, 'UTF-8');
                                             $ukm_deskripsi = htmlspecialchars($ukm['deskripsi'] ?? 'Tidak ada deskripsi', ENT_QUOTES, 'UTF-8');
-                                            $ukm_total = (int)($ukm['total_pendaftar'] ?? 0);
-                                            $ukm_sudah = (int)($ukm['sudah_daftar'] ?? 0);
+                                            $logo_url = !empty($ukm['logo']) 
+                                                ? '../uploads/' . htmlspecialchars($ukm['logo']) 
+                                                : '';
+                                            $sudah_diterima = isset($ukm_diterima_set[$ukm_id]);
                                         ?>
-                                        <div class="col-md-6 col-lg-4 col-xl-3 mb-3">
-                                            <div class="ukm-item-card h-100 d-flex flex-column">
-                                                <div class="d-flex align-items-start mb-2">
-                                                    <div class="ukm-icon"><i class="fas fa-users"></i></div>
-                                                    <div class="flex-grow-1">
-                                                        <h6 class="ukm-title"><?= $ukm_nama ?></h6>
-                                                        <div class="ukm-meta">
-                                                            <span class="category-badge"><?= $ukm_kategori ?></span>
-                                                            <span class="member-count"><i class="fas fa-user-friends me-1"></i><?= $ukm_total ?></span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <p class="ukm-description flex-grow-1">
-                                                    <?= (strlen($ukm_deskripsi) > 80) ? substr($ukm_deskripsi, 0, 80) . '...' : $ukm_deskripsi ?>
-                                                </p>
-                                                <div class="ukm-action mt-auto">
-                                                    <?php if ($ukm_sudah): ?>
-                                                        <span class="status-badge status-joined"><i class="fas fa-check me-1"></i>Sudah Bergabung</span>
+                                        <div class="col-md-6 col-lg-4">
+                                            <div class="card ukm-card h-100">
+                                                <div class="card-body text-center">
+                                                    <?php if ($logo_url): ?>
+                                                        <img src="<?= $logo_url ?>" alt="Logo <?= $ukm_nama ?>" class="ukm-logo">
                                                     <?php else: ?>
-                                                        <a href="ukm/detail.php?id=<?= $ukm_id ?>" class="btn-daftar w-100 justify-content-center">
-                                                            <i class="fas fa-paper-plane me-1"></i>Lihat Detail
-                                                        </a>
+                                                        <div class="ukm-logo bg-secondary d-flex align-items-center justify-content-center mx-auto">
+                                                            <i class="fas fa-users text-white fa-2x"></i>
+                                                        </div>
                                                     <?php endif; ?>
+
+                                                    <div class="category-badge"><?= $ukm_kategori ?></div>
+                                                    <h5 class="card-title fw-bold"><?= $ukm_nama ?></h5>
+                                                    <p class="card-text text-muted"><?= substr($ukm_deskripsi, 0, 100) ?>...</p>
+
+                                                    <div class="mt-3">
+                                                        <?php if ($sudah_diterima): ?>
+                                                            <span class="badge bg-success text-white">Sudah Bergabung</span>
+                                                        <?php else: ?>
+                                                            <a href="../ukm/detail.php?id=<?= $ukm_id ?>" class="btn btn-primary" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 25px; padding: 10px 25px; font-weight: 600; color: white; width: 100%;">
+                                                                <i class="fas fa-info-circle me-1"></i> Lihat Detail
+                                                            </a>
+                                                        <?php endif; ?>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     <?php endforeach; ?>
-                                </div>
-
-                                <div class="text-center mt-3">
-                                    <a href="daftar_ukm.php" class="btn-view-all">
-                                        <i class="fas fa-arrow-right me-1"></i>Lihat Semua UKM
-                                    </a>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -386,19 +382,6 @@ unset($ukm);
         </div>
     </div>
 
-    <!-- ✅ FITUR 3: Notifikasi (opsional) -->
-    <div class="fixed-bottom mb-4 me-4 text-end" style="z-index: 1000;">
-        <div class="alert alert-info alert-dismissible fade show" role="alert" style="max-width: 300px; display: none;" id="notifAlert">
-            <small><i class="fas fa-bell me-1"></i> Status keanggotaan diperbarui.</small>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    </div>
-
-    <script src=" https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js "></script>
-    <!-- Script notifikasi sederhana -->
-    <script>
-        // Bisa dikembangkan untuk cek update otomatis
-        // Untuk sekarang, hanya sebagai placeholder
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

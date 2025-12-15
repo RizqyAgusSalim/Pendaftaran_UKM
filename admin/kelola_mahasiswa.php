@@ -1,5 +1,5 @@
 <?php
-// admin/kelola_mahasiswa.php — Kelola Status Keanggotaan UKM
+session_start(); // ← HARUS ADA DI BARIS PERTAMA SETELAH <?php
 require_once '../config/database.php';
 require_once '../config/functions.php';
 
@@ -29,14 +29,12 @@ if ($_POST && isset($_POST['update_status'])) {
     $pendaftaran_id = (int)$_POST['pendaftaran_id'];
     $status_baru = $_POST['status_keanggotaan'];
 
-    // Validasi nilai
     $status_valid = ['aktif', 'tidak_aktif', 'cuti', 'dikeluarkan'];
     if (!in_array($status_baru, $status_valid)) {
         showAlert('Status tidak valid.', 'danger');
         redirect('kelola_mahasiswa.php');
     }
 
-    // Validasi: apakah pendaftaran ini milik UKM ini?
     $stmt_check = $db->prepare("SELECT id FROM pendaftaran WHERE id = :id AND ukm_id = :ukm_id AND status = 'diterima'");
     $stmt_check->bindParam(':id', $pendaftaran_id, PDO::PARAM_INT);
     $stmt_check->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
@@ -47,7 +45,6 @@ if ($_POST && isset($_POST['update_status'])) {
         redirect('kelola_mahasiswa.php');
     }
 
-    // Update status keanggotaan
     $stmt_update = $db->prepare("UPDATE pendaftaran SET status_keanggotaan = :status WHERE id = :id");
     $stmt_update->bindParam(':status', $status_baru, PDO::PARAM_STR);
     $stmt_update->bindParam(':id', $pendaftaran_id, PDO::PARAM_INT);
@@ -61,9 +58,7 @@ if ($_POST && isset($_POST['update_status'])) {
     redirect('kelola_mahasiswa.php');
 }
 
-// ----------------------------------------------------
-// AMBIL DATA ANGGOTA (hanya yang DITERIMA)
-// ----------------------------------------------------
+// Ambil data anggota
 $query = "
     SELECT 
         m.id AS mahasiswa_id,
@@ -83,7 +78,6 @@ $stmt->bindParam(':ukm_id', $ukm_id, PDO::PARAM_INT);
 $stmt->execute();
 $anggota_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Fungsi bantu untuk badge status keanggotaan
 function getKeanggotaanBadge($status) {
     $label = match($status) {
         'aktif' => 'Aktif',
@@ -152,46 +146,12 @@ function getKeanggotaanBadge($status) {
 <body>
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar (sama seperti dashboard.php) -->
+            <!-- Sidebar dari file terpisah -->
             <div class="col-md-3 col-lg-2 px-0">
-                <div class="sidebar">
-                    <div class="p-3 text-center border-bottom border-secondary">
-                        <h5 class="text-white mb-0">
-                            <i class="fas fa-university"></i> Admin UKM
-                        </h5>
-                        <small class="text-white-50">Politeknik Negeri Lampung</small>
-                    </div>
-                    <nav class="nav flex-column">
-                        <a class="nav-link" href="dashboard.php">
-                            <i class="fas fa-tachometer-alt me-2"></i> Dashboard
-                        </a>
-                        <a class="nav-link" href="kelola_ukm.php">
-                            <i class="fas fa-users me-2"></i> Kelola UKM
-                        </a>
-                        <a class="nav-link" href="kelola_kategori.php">
-                            <i class="fas fa-tags me-2"></i> Kategori UKM
-                        </a>
-                        <a class="nav-link active" href="kelola_mahasiswa.php">
-                            <i class="fas fa-user-graduate me-2"></i> Data Mahasiswa
-                        </a>
-                        <a class="nav-link" href="kelola_pendaftaran.php">
-                            <i class="fas fa-clipboard-list me-2"></i> Pendaftaran
-                        </a>
-                        <a class="nav-link" href="laporan.php">
-                            <i class="fas fa-chart-bar me-2"></i> Laporan
-                        </a>
-                        <div class="dropdown-divider bg-secondary"></div>
-                        <a class="nav-link" href="../index.php" target="_blank">
-                            <i class="fas fa-external-link-alt me-2"></i> Lihat Website
-                        </a>
-                        <a class="nav-link" href="../auth/logout.php">
-                            <i class="fas fa-sign-out-alt me-2"></i> Logout
-                        </a>
-                    </nav>
-                </div>
+                <?php include 'sidebar.php'; ?>
             </div>
 
-            <!-- Main Content -->
+            <!-- Konten Utama -->
             <div class="col-md-9 col-lg-10 main-content">
                 <div class="p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -243,21 +203,16 @@ function getKeanggotaanBadge($status) {
                                                             <div class="avatar-initials">
                                                                 <?= strtoupper(substr(htmlspecialchars($m['nama']), 0, 2)) ?>
                                                             </div>
-                                                            <div class="ms-2">
-                                                                <div class="fw-bold"><?= htmlspecialchars($m['nama']) ?></div>
-                                                            </div>
+                                                            <div class="ms-2 fw-bold"><?= htmlspecialchars($m['nama']) ?></div>
                                                         </div>
                                                     </td>
                                                     <td><?= htmlspecialchars($m['nim']) ?></td>
                                                     <td><?= htmlspecialchars($m['email']) ?></td>
+                                                    <td><?= getKeanggotaanBadge($m['status_keanggotaan']) ?></td>
                                                     <td>
-                                                        <?= getKeanggotaanBadge($m['status_keanggotaan']) ?>
-                                                    </td>
-                                                    <td>
-                                                        <!-- Dropdown untuk ubah status -->
                                                         <form method="POST" style="display:inline;">
                                                             <input type="hidden" name="pendaftaran_id" value="<?= $m['pendaftaran_id'] ?>">
-                                                            <select name="status_keanggotaan" class="form-select form-select-sm d-inline w-auto me-1" style="width: auto; display: inline-block;">
+                                                            <select name="status_keanggotaan" class="form-select form-select-sm d-inline w-auto me-1">
                                                                 <option value="aktif" <?= $m['status_keanggotaan'] === 'aktif' ? 'selected' : '' ?>>Aktif</option>
                                                                 <option value="tidak_aktif" <?= $m['status_keanggotaan'] === 'tidak_aktif' ? 'selected' : '' ?>>Tidak Aktif</option>
                                                                 <option value="cuti" <?= $m['status_keanggotaan'] === 'cuti' ? 'selected' : '' ?>>Cuti</option>

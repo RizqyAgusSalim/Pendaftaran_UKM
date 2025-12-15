@@ -127,12 +127,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ubah_password'])) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background: #f5f6fa; }
+        body {
+            background: #f5f6fa;
+        }
         .sidebar {
             height: 100vh;
             background: #2c3e50;
             padding-top: 20px;
             color: white;
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 1000;
         }
         .sidebar a {
             padding: 12px;
@@ -144,6 +150,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ubah_password'])) {
         .sidebar a:hover {
             background: #1abc9c;
             border-radius: 5px;
+        }
+        .main-content {
+            margin-left: 16.66%;
+            padding: 20px;
         }
         .card-custom {
             border-radius: 15px;
@@ -167,19 +177,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ubah_password'])) {
 <div class="container-fluid">
     <div class="row">
 
-        <!-- SIDEBAR -->
-        <div class="col-2 sidebar">
-            <h4 class="text-center mb-4"><i class="fas fa-crown"></i> Super Admin</h4>
-            <a href="dashboard.php"><i class="fas fa-home"></i> Dashboard</a>
-            <a href="kelola_admin.php"><i class="fas fa-users-cog"></i> Kelola Admin</a>
-            <a href="kelola_mahasiswa.php" class="active"><i class="fas fa-user-graduate"></i> Kelola Mahasiswa</a>
-            <a href="kelola_ukm.php"><i class="fas fa-sitemap"></i> Kelola UKM</a>
-            <a href="../admin/dashboard.php"><i class="fas fa-user-shield"></i> Mode Admin</a>
-            <a href="../auth/logout.php" class="text-danger"><i class="fas fa-sign-out-alt"></i> Logout</a>
-        </div>
+        <!-- SIDEBAR (diganti dengan include) -->
+        <?php include 'sidebar.php'; ?>
 
         <!-- KONTEN -->
-        <div class="col-10 p-4">
+        <div class="col-10 main-content">
             <h2 class="mb-4"><i class="fas fa-user-graduate"></i> Kelola Mahasiswa</h2>
 
             <?php if (isset($_SESSION['flash_message'])): ?>

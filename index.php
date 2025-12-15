@@ -11,11 +11,93 @@ $stmt = $db->prepare($query);
 $stmt->execute();
 $ukm_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Ambil berita terbaru
-$query_berita = "SELECT b.*, u.nama_ukm FROM berita b JOIN ukm u ON b.ukm_id = u.id WHERE b.status = 'published' ORDER BY b.tanggal_publikasi DESC LIMIT 5";
+// === Ambil BERITA ===
+$query_berita = "
+    SELECT 
+        'berita' AS jenis,
+        b.id,
+        b.judul,
+        b.konten,
+        b.gambar,
+        b.penulis,
+        b.tanggal_publikasi AS tanggal,
+        u.nama_ukm,
+        u.id AS ukm_id,
+        NULL AS foto_list
+    FROM berita b
+    JOIN ukm u ON b.ukm_count = u.id
+    WHERE b.status = 'published'
+";
+// Perbaiki typo: 'ukm_count' → 'ukm_id'
+$query_berita = "
+    SELECT 
+        'berita' AS jenis,
+        b.id,
+        b.judul,
+        b.konten,
+        b.gambar,
+        b.penulis,
+        b.tanggal_publikasi AS tanggal,
+        u.nama_ukm,
+        u.id AS ukm_id,
+        NULL AS foto_list
+    FROM berita b
+    JOIN ukm u ON b.ukm_id = u.id
+    WHERE b.status = 'published'
+";
 $stmt_berita = $db->prepare($query_berita);
 $stmt_berita->execute();
 $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
+
+// === Ambil KEGIATAN + FOTO ===
+$query_kegiatan = "
+    SELECT 
+        'kegiatan' AS jenis,
+        k.id,
+        k.nama_kegiatan AS judul,
+        CONCAT(
+            '<p><strong>Deskripsi:</strong> ', k.deskripsi_kegiatan, '</p>',
+            '<p><strong>Tanggal:</strong> ', 
+                DATE_FORMAT(k.tanggal_mulai, '%d %M %Y'),
+                IF(k.tanggal_selesai IS NOT NULL AND k.tanggal_selesai != k.tanggal_mulai, 
+                   CONCAT(' - ', DATE_FORMAT(k.tanggal_selesai, '%d %M %Y')), ''),
+            '</p>',
+            '<p><strong>Lokasi:</strong> ', k.lokasi, '</p>',
+            IF(k.biaya > 0, CONCAT('<p><strong>Biaya:</strong> Rp ', FORMAT(k.biaya, 0)), '')
+        ) AS konten,
+        (
+            SELECT f.foto 
+            FROM foto_kegiatan f 
+            WHERE f.kegiatan_id = k.id 
+            ORDER BY f.id ASC 
+            LIMIT 1
+        ) AS gambar,
+        u.nama_ukm AS penulis,
+        k.created_at AS tanggal,
+        u.nama_ukm,
+        u.id AS ukm_id,
+        GROUP_CONCAT(
+            CONCAT('{\"id\":\"', f.id, '\",\"foto\":\"', f.foto, '\",\"keterangan\":\"', COALESCE(f.keterangan, ''), '\"}')
+            ORDER BY f.id ASC
+            SEPARATOR '|||'
+        ) AS foto_list
+    FROM kegiatan_ukm k
+    JOIN ukm u ON k.ukm_id = u.id
+    LEFT JOIN foto_kegiatan f ON f.kegiatan_id = k.id
+    WHERE k.status = 'published'
+    GROUP BY k.id, u.id, u.nama_ukm, k.nama_kegiatan, k.deskripsi_kegiatan, k.tanggal_mulai, k.tanggal_selesai, k.lokasi, k.biaya, k.created_at
+";
+$stmt_kegiatan = $db->prepare($query_kegiatan);
+$stmt_kegiatan->execute();
+$kegiatan_list = $stmt_kegiatan->fetchAll(PDO::FETCH_ASSOC);
+
+// Gabung dan urutkan
+$all_news = array_merge($berita_list, $kegiatan_list);
+usort($all_news, function($a, $b) {
+    return strtotime($b['tanggal']) - strtotime($a['tanggal']);
+});
+$berita_list = array_slice($all_news, 0, 6);
+
 ?>
 
 <!DOCTYPE html>
@@ -36,6 +118,7 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding-top: 70px;
         }
         
         .hero-section {
@@ -130,13 +213,28 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
             color: white;
             padding: 40px 0;
         }
+
+        .foto-mini {
+            height: 80px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .card-text-info {
+            font-size: 0.85rem;
+            line-height: 1.5;
+            margin-top: 0.5rem;
+        }
+        .card-text-info div {
+            margin-bottom: 0.25rem;
+        }
     </style>
 </head>
 <body>
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
         <div class="container">
-            <a class="navbar-brand" href="#">
+            <a class="navbar-brand" href="./">
                 <i class="fas fa-university"></i>
                 <strong>UKM Polinela</strong>
             </a>
@@ -152,7 +250,7 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
                         <a class="nav-link" href="ukm/index.php">Daftar UKM</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#berita">Berita</a>
+                        <a class="nav-link" href="#berita">Berita & Kegiatan</a>
                     </li>
                 </ul>
                 <ul class="navbar-nav">
@@ -223,7 +321,6 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
         <div class="container">
             <div class="row">
                 <?php
-                // Hitung statistik
                 $stmt_total_ukm = $db->query("SELECT COUNT(*) FROM ukm WHERE status = 'aktif'");
                 $total_ukm = $stmt_total_ukm->fetchColumn();
 
@@ -273,25 +370,25 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
                     <div class="card ukm-card h-100">
                         <div class="card-body text-center">
                             <?php if ($ukm['logo']): ?>
-                                <img src="uploads/<?= $ukm['logo'] ?>" alt="Logo <?= $ukm['nama_ukm'] ?>" class="ukm-logo">
+                                <img src="uploads/<?= htmlspecialchars($ukm['logo']) ?>" alt="Logo <?= htmlspecialchars($ukm['nama_ukm']) ?>" class="ukm-logo">
                             <?php else: ?>
                                 <div class="ukm-logo bg-secondary d-flex align-items-center justify-content-center mx-auto">
                                     <i class="fas fa-users text-white fa-2x"></i>
                                 </div>
                             <?php endif; ?>
                             
-                            <div class="category-badge"><?= $ukm['nama_kategori'] ?: 'Umum' ?></div>
-                            <h5 class="card-title fw-bold"><?= $ukm['nama_ukm'] ?></h5>
-                            <p class="card-text text-muted"><?= substr($ukm['deskripsi'], 0, 100) ?>...</p>
+                            <div class="category-badge"><?= htmlspecialchars($ukm['nama_kategori'] ?: 'Umum') ?></div>
+                            <h5 class="card-title fw-bold"><?= htmlspecialchars($ukm['nama_ukm']) ?></h5>
+                            <p class="card-text text-muted"><?= substr(htmlspecialchars($ukm['deskripsi']), 0, 100) ?>...</p>
                             
                             <div class="mb-3">
                                 <small class="text-muted">
-                                    <i class="fas fa-user"></i> Ketua: <?= $ukm['ketua_umum'] ?>
+                                    <i class="fas fa-user"></i> Ketua: <?= htmlspecialchars($ukm['ketua_umum']) ?>
                                 </small>
                             </div>
                             
                             <div class="d-grid gap-2">
-                                <a href="ukm/index.php?= $ukm['id'] ?>" class="btn btn-primary btn-primary-custom">
+                                <a href="ukm/detail.php?id=<?= $ukm['id'] ?>" class="btn btn-primary btn-primary-custom">
                                     <i class="fas fa-info-circle"></i> Lihat Detail
                                 </a>
                                 <?php if (isMahasiswa()): ?>
@@ -308,38 +405,152 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </section>
 
-    <!-- News Section -->
-    <?php if (!empty($berita_list)): ?>
-    <section id="berita" class="news-section bg-light">
-        <div class="container">
-            <div class="row">
-                <div class="col-lg-8 mx-auto text-center mb-5">
-                    <h2 class="display-5 fw-bold">Berita & Pengumuman</h2>
-                    <p class="lead text-muted">Informasi terbaru dari Unit Kegiatan Mahasiswa</p>
-                </div>
-            </div>
-            <div class="row">
-                <?php foreach (array_slice($berita_list, 0, 3) as $berita): ?>
-                <div class="col-lg-4 col-md-6 mb-4">
-                    <div class="card news-card h-100">
-                        <?php if ($berita['gambar']): ?>
-                            <img src="uploads/<?= $berita['gambar'] ?>" class="card-img-top" style="height: 200px; object-fit: cover;">
-                        <?php endif; ?>
-                        <div class="card-body">
-                            <small class="text-primary fw-bold"><?= $berita['nama_ukm'] ?></small>
-                            <h5 class="card-title mt-2"><?= $berita['judul'] ?></h5>
-                            <p class="card-text text-muted"><?= substr(strip_tags($berita['konten']), 0, 120) ?>...</p>
-                            <small class="text-muted">
-                                <i class="fas fa-calendar"></i> <?= formatTanggal($berita['tanggal_publikasi']) ?>
-                            </small>
-                        </div>
-                    </div>
-                </div>
-                <?php endforeach; ?>
+<!-- ✅ BERITA & KEGIATAN TERBARU -->
+<?php if (!empty($berita_list)): ?>
+<section id="berita" class="news-section bg-light">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto text-center mb-5">
+                <h2 class="display-5 fw-bold">Berita & Kegiatan Terbaru</h2>
+                <p class="lead text-muted">Informasi dari Unit Kegiatan Mahasiswa</p>
             </div>
         </div>
-    </section>
-    <?php endif; ?>
+        <div class="row">
+            <?php foreach ($berita_list as $berita): ?>
+            <div class="col-lg-4 col-md-6 mb-4">
+                <div class="card news-card h-100 shadow-sm border-0">
+                    <!-- Gambar -->
+                    <?php if (!empty($berita['gambar'])): ?>
+                        <?php if ($berita['jenis'] === 'berita'): ?>
+                            <img src="uploads/<?= htmlspecialchars($berita['gambar']) ?>" 
+                                 class="card-img-top" 
+                                 style="height: 200px; object-fit: cover; object-position: center;">
+                        <?php else: ?>
+                            <img src="uploads/kegiatan/<?= htmlspecialchars($berita['gambar']) ?>" 
+                                 class="card-img-top" 
+                                 style="height: 200px; object-fit: cover; object-position: center;">
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <div class="card-img-top bg-secondary d-flex align-items-center justify-content-center" style="height: 200px;">
+                            <?php if ($berita['jenis'] === 'kegiatan'): ?>
+                                <i class="fas fa-calendar-alt fa-3x text-white"></i>
+                            <?php else: ?>
+                                <i class="fas fa-newspaper fa-3x text-white"></i>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <!-- Body -->
+                    <div class="card-body d-flex flex-column">
+                        <!-- Badge Jenis -->
+                        <span class="badge <?= $berita['jenis'] === 'kegiatan' ? 'bg-info' : 'bg-primary' ?> text-white mb-2">
+                            <?= ucfirst($berita['jenis']) ?>
+                        </span>
+
+                        <!-- Nama UKM -->
+                        <small class="text-primary fw-bold mb-1"><?= htmlspecialchars($berita['nama_ukm']) ?></small>
+
+                        <!-- Judul -->
+                        <h5 class="card-title mt-1"><?= htmlspecialchars($berita['judul']) ?></h5>
+
+                        <!-- ✅ HAPUS: Deskripsi singkat di sini (tidak ditampilkan) -->
+
+                        <!-- Info Penulis & Tanggal -->
+                        <small class="text-muted mb-2">
+                            <i class="fas fa-user"></i> <?= htmlspecialchars($berita['penulis']) ?> • 
+                            <i class="fas fa-calendar"></i> <?= formatTanggal($berita['tanggal']) ?>
+                        </small>
+
+                        <!-- Detail Kegiatan (Jika Kegiatan) -->
+                        <?php if ($berita['jenis'] === 'kegiatan'): ?>
+                            <div class="card-text-info mt-2">
+                                <?php
+                                $desc = $tanggal = $lokasi = $biaya = '';
+                                $dom = new DOMDocument();
+                                @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $berita['konten']);
+                                $paragraphs = $dom->getElementsByTagName('p');
+
+                                foreach ($paragraphs as $p) {
+                                    $text = trim($p->nodeValue);
+                                    if (strpos($text, 'Deskripsi:') !== false) {
+                                        $desc = str_replace('Deskripsi:', '', $text);
+                                    } elseif (strpos($text, 'Tanggal:') !== false) {
+                                        $tanggal = str_replace('Tanggal:', '', $text);
+                                    } elseif (strpos($text, 'Lokasi:') !== false) {
+                                        $lokasi = str_replace('Lokasi:', '', $text);
+                                    } elseif (strpos($text, 'Biaya:') !== false) {
+                                        $biaya = str_replace('Biaya:', '', $text);
+                                    }
+                                }
+                                ?>
+                                <?php if (!empty($desc)): ?>
+                                    <div><strong>Deskripsi:</strong> <?= htmlspecialchars(substr(trim($desc), 0, 60)) ?>...</div>
+                                <?php endif; ?>
+                                <?php if (!empty($tanggal)): ?>
+                                    <div><strong>Tanggal:</strong> <?= htmlspecialchars(trim($tanggal)) ?></div>
+                                <?php endif; ?>
+                                <?php if (!empty($lokasi)): ?>
+                                    <div><strong>Lokasi:</strong> <?= htmlspecialchars(trim($lokasi)) ?></div>
+                                <?php endif; ?>
+                                <?php if (!empty($biaya)): ?>
+                                    <div><strong>Biaya:</strong> <?= htmlspecialchars(trim($biaya)) ?></div>
+                                <?php endif; ?>
+                            </div>
+                        <?php else: ?>
+                            <!-- Untuk BERITA: tampilkan cuplikan singkat di bawah tanggal -->
+                            <p class="card-text text-muted mt-2" style="font-size: 0.9rem; line-height: 1.4;">
+                                <?= substr(strip_tags($berita['konten']), 0, 100) ?>...
+                            </p>
+                        <?php endif; ?>
+
+                        <!-- Tombol Lihat Selengkapnya -->
+                        <a href="ukm/detail_<?= $berita['jenis'] ?>.php?id=<?= $berita['id'] ?>" 
+                           class="btn btn-outline-primary mt-auto py-2">
+                            <i class="fas fa-eye me-1"></i> Lihat Selengkapnya
+                        </a>
+
+                        <!-- Galeri Foto Kegiatan -->
+                        <?php if ($berita['jenis'] === 'kegiatan' && !empty($berita['foto_list'])): ?>
+                            <?php
+                            $foto_array = [];
+                            if (!empty($berita['foto_list'])) {
+                                $parts = explode('|||', $berita['foto_list']);
+                                foreach ($parts as $part) {
+                                    $json_str = str_replace(['{', '}'], '', $part);
+                                    $obj_str = '{' . $json_str . '}';
+                                    $foto = json_decode($obj_str, true, 512, JSON_UNESCAPED_SLASHES);
+                                    if ($foto && isset($foto['foto'])) {
+                                        $foto_array[] = $foto;
+                                    }
+                                }
+                            }
+                            ?>
+                            <hr class="my-3">
+                            <div>
+                                <small class="fw-bold">Foto Kegiatan:</small>
+                                <div class="d-flex flex-wrap gap-2 mt-2">
+                                    <?php foreach (array_slice($foto_array, 0, 2) as $foto): ?>
+                                        <div style="width: 60px; height: 60px; overflow: hidden; border-radius: 4px; flex-shrink: 0;">
+                                            <img src="uploads/kegiatan/<?= htmlspecialchars($foto['foto']) ?>"
+                                                 style="width: 100%; height: 100%; object-fit: cover;"
+                                                 alt="<?= htmlspecialchars($foto['keterangan'] ?? 'Foto kegiatan') ?>"
+                                                 onerror="this.src='assets/img/no-image.png'">
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <?php if (count($foto_array) > 2): ?>
+                                    <small class="text-muted mt-2 d-block">+<?= count($foto_array) - 2 ?> foto lainnya</small>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+</section>
+<?php endif; ?>
 
     <!-- Footer -->
     <footer>
@@ -374,39 +585,12 @@ $berita_list = $stmt_berita->fetchAll(PDO::FETCH_ASSOC);
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Smooth scrolling untuk anchor links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
                 e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
-                }
-            });
-        });
-
-        // Active navbar on scroll
-        window.addEventListener('scroll', function() {
-            const sections = document.querySelectorAll('section');
-            const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
-            
-            let current = '';
-            sections.forEach(section => {
-                const sectionTop = section.offsetTop;
-                const sectionHeight = section.clientHeight;
-                if (scrollY >= (sectionTop - 200)) {
-                    current = section.getAttribute('id');
-                }
-            });
-
-            navLinks.forEach(link => {
-                link.classList.remove('active');
-                if (link.getAttribute('href') === '#' + current) {
-                    link.classList.add('active');
-                }
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
             });
         });
     </script>

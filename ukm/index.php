@@ -43,8 +43,11 @@ $kategori_list = $stmt_kategori->fetchAll(PDO::FETCH_ASSOC);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+        body {
+            padding-top: 70px; /* Memberi ruang untuk fixed navbar */
+        }
         .hero-section {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
             color: white;
             padding: 80px 0;
         }
@@ -80,10 +83,77 @@ $kategori_list = $stmt_kategori->fetchAll(PDO::FETCH_ASSOC);
         }
         .filter-btn:hover, .filter-btn.active {
             transform: scale(1.05);
+            background-color: #3498db;
+            color: white;
+        }
+        footer {
+            background: #2c3e50;
+            color: white;
+            padding: 20px 0;
         }
     </style>
 </head>
 <body>
+
+    <!-- ✅ Navbar yang disesuaikan untuk ukm/index.php -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="../">
+                <i class="fas fa-university"></i>
+                <strong>UKM Polinela</strong>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="../">Beranda</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#">Daftar UKM</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="../#berita">Berita & Kegiatan</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <?php if (isLoggedIn()): ?>
+                        <?php if (isAdmin()): ?>
+                            <li class="nav-item">
+                                <a class="nav-link" href="../admin/dashboard.php">
+                                    <i class="fas fa-tachometer-alt"></i> Dashboard Admin
+                                </a>
+                            </li>
+                        <?php else: ?>
+                            <li class="nav-item">
+                                <a class="nav-link" href="../mahasiswa/dashboard.php">
+                                    <i class="fas fa-user"></i> Dashboard
+                                </a>
+                            </li>
+                        <?php endif; ?>
+                        <li class="nav-item">
+                            <a class="nav-link" href="../auth/logout.php">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </a>
+                        </li>
+                    <?php else: ?>
+                        <li class="nav-item">
+                            <a class="nav-link" href="../auth/login.php">
+                                <i class="fas fa-sign-in-alt"></i> Login
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="../auth/register.php">
+                                <i class="fas fa-user-plus"></i> Daftar
+                            </a>
+                        </li>
+                    <?php endif; ?>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
     <!-- Hero Section -->
     <div class="hero-section">
         <div class="container text-center">
