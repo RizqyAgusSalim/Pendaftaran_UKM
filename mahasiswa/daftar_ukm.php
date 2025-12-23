@@ -2,6 +2,28 @@
 require_once '../config/database.php';
 require_once '../config/functions.php';
 
+// 🟢 PERBAIKAN 1: Handle AJAX di awal — sebelum HTML apapun dikirim
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_divisi' && isset($_GET['ukm_id']) && is_numeric($_GET['ukm_id'])) {
+    header('Content-Type: application/json');
+
+    $ukm_id = (int)$_GET['ukm_id'];
+    $database = new Database();
+    $db = $database->getConnection();
+
+    if (!$db) {
+        echo json_encode([]);
+        exit;
+    }
+
+    // ❗ NAMA TABEL: divisi (sesuai screenshot Anda)
+    $stmt = $db->prepare("SELECT id, nama_divisi FROM divisi WHERE ukm_id = ? ORDER BY nama_divisi ASC");
+    $stmt->execute([$ukm_id]);
+    $divisi = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode($divisi);
+    exit; // ⚠️ Hentikan eksekusi agar tidak kirim HTML
+}
+
 // Cek apakah user adalah mahasiswa
 if (!isLoggedIn() || !isMahasiswa()) {
     redirect('../auth/login.php');
@@ -21,6 +43,7 @@ $success = '';
 // Handle form submission
 if ($_POST && isset($_POST['daftar_ukm'])) {
     $ukm_id = (int)$_POST['ukm_id'];
+    $divisi_id = !empty($_POST['divisi_id']) ? (int)$_POST['divisi_id'] : null;
     $alasan_bergabung = sanitize($_POST['alasan_bergabung']);
     $pengalaman_organisasi = sanitize($_POST['pengalaman_organisasi']);
     
@@ -28,23 +51,58 @@ if ($_POST && isset($_POST['daftar_ukm'])) {
         $error = 'Alasan bergabung harus diisi';
     } else {
         try {
-            // Cek apakah sudah pernah mendaftar
+            // Cek apakah sudah pernah mendaftar ke UKM ini
             $query = "SELECT COUNT(*) FROM pendaftaran WHERE mahasiswa_id = ? AND ukm_id = ?";
             $stmt = $db->prepare($query);
             $stmt->execute([$mahasiswa_id, $ukm_id]);
-            
             if ($stmt->fetchColumn() > 0) {
                 $error = 'Anda sudah pernah mendaftar ke UKM ini';
             } else {
-                // Insert pendaftaran baru
-                $query = "INSERT INTO pendaftaran (mahasiswa_id, ukm_id, alasan_bergabung, pengalaman_organisasi, status, created_at) 
-                          VALUES (?, ?, ?, ?, 'pending', NOW())";
-                $stmt = $db->prepare($query);
-                
-                if ($stmt->execute([$mahasiswa_id, $ukm_id, $alasan_bergabung, $pengalaman_organisasi])) {
-                    $success = 'Pendaftaran berhasil dikirim! Admin akan meninjau pendaftaran Anda.';
-                } else {
-                    $error = 'Gagal mengirim pendaftaran. Silakan coba lagi.';
+                // Jika memilih divisi, validasi bahwa divisi benar-benar milik UKM ini
+                if ($divisi_id !== null) {
+                    $stmt_check = $db->prepare("SELECT id FROM divisi WHERE id = ? AND ukm_id = ?");
+                    $stmt_check->execute([$divisi_id, $ukm_id]);
+                    if (!$stmt_check->fetch()) {
+                        $error = 'Divisi yang dipilih tidak valid';
+                    }
+                }
+
+                if (!$error) {
+                    // Insert pendaftaran baru + divisi_id (bisa NULL)
+                    $query = "INSERT INTO pendaftaran (mahasiswa_id, ukm_id, divisi_id, alasan_bergabung, pengalaman_organisasi, status, created_at) 
+                              VALUES (?, ?, ?, ?, ?, 'pending', NOW())";
+                    $stmt = $db->prepare($query);
+                    
+                    if ($stmt->execute([$mahasiswa_id, $ukm_id, $divisi_id, $alasan_bergabung, $pengalaman_organisasi])) {
+                        $success = 'Pendaftaran berhasil dikirim! Admin akan meninjau pendaftaran Anda.';
+
+                        // 🔔 TAMBAHAN: KIRIM NOTIFIKASI KE ADMIN UKM
+                        try {
+                            // Ambil nama UKM dan admin_id
+                            $stmt_ukm = $db->prepare("SELECT admin_id, nama_ukm FROM ukm WHERE id = ?");
+                            $stmt_ukm->execute([$ukm_id]);
+                            $ukm_data = $stmt_ukm->fetch(PDO::FETCH_ASSOC);
+
+                            if ($ukm_data && !empty($ukm_data['admin_id'])) {
+                                $admin_id = (int)$ukm_data['admin_id'];
+                                $nama_ukm = htmlspecialchars($ukm_data['nama_ukm'], ENT_QUOTES, 'UTF-8');
+
+                                // Simpan notifikasi ke tabel `notifikasi`
+                                $stmt_notif = $db->prepare("
+                                    INSERT INTO notifikasi (user_id, pesan, url, created_at)
+                                    VALUES (?, ?, ?, NOW())
+                                ");
+                                $pesan = "Mahasiswa baru mendaftar ke UKM Anda: " . $nama_ukm . ". Silakan periksa pendaftaran.";
+                                $url = "kelola_pendaftaran.php"; // Sesuaikan jika nama file berbeda
+                                $stmt_notif->execute([$admin_id, $pesan, $url]);
+                            }
+                        } catch (PDOException $e) {
+                            // Jangan hentikan alur, cukup log error
+                            error_log("Notifikasi gagal dikirim: " . $e->getMessage());
+                        }
+                    } else {
+                        $error = 'Gagal mengirim pendaftaran. Silakan coba lagi.';
+                    }
                 }
             }
         } catch (PDOException $e) {
@@ -54,7 +112,13 @@ if ($_POST && isset($_POST['daftar_ukm'])) {
     }
 }
 
-// Get UKM yang dipilih jika ada parameter id
+// 🟢 PERBAIKAN 2: Deteksi ukm_id untuk auto-open modal
+$auto_open_ukm_id = null;
+if (isset($_GET['ukm_id']) && is_numeric($_GET['ukm_id'])) {
+    $auto_open_ukm_id = (int)$_GET['ukm_id'];
+}
+
+// Get UKM jika ada parameter 'id' (untuk tampilan detail — opsional)
 $selected_ukm = null;
 if (isset($_GET['id'])) {
     $ukm_id = (int)$_GET['id'];
@@ -70,7 +134,7 @@ if (isset($_GET['id'])) {
     }
 }
 
-// Get semua UKM yang tersedia
+// Get semua UKM yang tersedia (SELALU tampilkan semua)
 try {
     $query = "SELECT u.*, k.nama_kategori,
                      COUNT(p.id) as total_pendaftar,
@@ -113,6 +177,7 @@ if ($filter_kategori) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Daftar UKM - Dashboard Mahasiswa</title>
+    <!-- ✅ CDN tanpa spasi -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -121,40 +186,47 @@ if ($filter_kategori) {
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
         }
-
         .navbar-custom {
             background: rgba(255,255,255,0.95);
             backdrop-filter: blur(10px);
             box-shadow: 0 2px 20px rgba(0,0,0,0.1);
         }
-
         .main-container {
-            padding: 2rem 0;
+            padding: 1.5rem 0;
         }
-
         .page-header {
             background: white;
             border-radius: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            padding: 2rem;
-            margin-bottom: 2rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
             text-align: center;
         }
-
         .filter-section {
             background: white;
             border-radius: 15px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-            padding: 1.5rem;
-            margin-bottom: 2rem;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
         }
-
+        /* ✅ GRID RESPONSIF: pakai CSS Grid dengan fallback */
         .ukm-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.25rem;
         }
-
+        @media (max-width: 575.98px) {
+            .ukm-grid {
+                grid-template-columns: 1fr;
+            }
+            .page-header, .filter-section {
+                padding: 1.25rem;
+            }
+            .ukm-header { padding: 1.25rem; }
+            .ukm-body { padding: 1.25rem; }
+            .ukm-title { font-size: 1.1rem; }
+            .ukm-description { font-size: 0.9rem; }
+        }
         .ukm-card {
             background: white;
             border-radius: 20px;
@@ -164,12 +236,10 @@ if ($filter_kategori) {
             border: none;
             height: 100%;
         }
-
         .ukm-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 20px 40px rgba(0,0,0,0.15);
         }
-
         .ukm-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -177,7 +247,6 @@ if ($filter_kategori) {
             position: relative;
             overflow: hidden;
         }
-
         .ukm-header::before {
             content: '';
             position: absolute;
@@ -188,11 +257,9 @@ if ($filter_kategori) {
             background: rgba(255,255,255,0.1);
             transform: rotate(45deg);
         }
-
         .ukm-body {
             padding: 1.5rem;
         }
-
         .category-badge {
             background: rgba(255,255,255,0.2);
             color: white;
@@ -203,20 +270,18 @@ if ($filter_kategori) {
             margin-bottom: 1rem;
             display: inline-block;
         }
-
         .ukm-title {
             font-size: 1.2rem;
             font-weight: bold;
             color: white;
             margin: 0;
         }
-
         .ukm-description {
             color: #6c757d;
             line-height: 1.5;
             margin-bottom: 1rem;
+            font-size: 0.95rem;
         }
-
         .ukm-meta {
             display: flex;
             justify-content: space-between;
@@ -226,96 +291,85 @@ if ($filter_kategori) {
             background: #f8f9fc;
             border-radius: 10px;
         }
-
         .ukm-stats {
             display: flex;
-            gap: 1rem;
+            gap: 0.75rem;
         }
-
         .stat-item {
             text-align: center;
         }
-
         .stat-number {
-            font-size: 1.1rem;
+            font-size: 1rem;
             font-weight: bold;
             color: #667eea;
         }
-
         .stat-label {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: #6c757d;
         }
-
         .btn-daftar {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            padding: 0.8rem 2rem;
+            padding: 0.75rem 1.5rem;
             border-radius: 25px;
             font-weight: 600;
             width: 100%;
             transition: all 0.3s ease;
+            font-size: 0.95rem;
         }
-
         .btn-daftar:hover {
             color: white;
             transform: translateY(-2px);
             box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
         }
-
         .btn-sudah-daftar {
             background: #28a745;
             color: white;
             border: none;
-            padding: 0.8rem 2rem;
+            padding: 0.75rem 1.5rem;
             border-radius: 25px;
             font-weight: 600;
             width: 100%;
             cursor: not-allowed;
+            font-size: 0.95rem;
         }
-
         .modal-content {
             border-radius: 20px;
             border: none;
         }
-
         .modal-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border-radius: 20px 20px 0 0;
         }
-
         .form-floating textarea {
-            min-height: 120px;
+            min-height: 100px;
         }
-
         .filter-btn {
             margin: 0.2rem;
-            padding: 0.5rem 1rem;
+            padding: 0.4rem 0.8rem;
             border-radius: 20px;
             border: 2px solid #dee2e6;
             background: white;
             color: #6c757d;
             text-decoration: none;
             transition: all 0.3s ease;
+            font-size: 0.85rem;
         }
-
         .filter-btn:hover, .filter-btn.active {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border-color: transparent;
             text-decoration: none;
         }
-
         .empty-state {
             text-align: center;
-            padding: 4rem 2rem;
+            padding: 3rem 1.5rem;
             background: white;
             border-radius: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
-
         .back-btn {
             background: rgba(255,255,255,0.2);
             color: white;
@@ -325,30 +379,69 @@ if ($filter_kategori) {
             text-decoration: none;
             transition: all 0.3s ease;
         }
-
         .back-btn:hover {
             background: white;
             color: #667eea;
         }
+        #divisi-section {
+            display: none;
+        }
+
+        /* ✅ Perbaikan Navbar */
+        .navbar-toggler {
+            border: none;
+            padding: 0.5rem 0.75rem;
+        }
+        .navbar-toggler-icon {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(0,0,0,0.5)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+        }
+        .navbar-nav .nav-link {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+        @media (max-width: 767.98px) {
+            .navbar-nav {
+                margin-top: 1rem;
+            }
+            .navbar-brand {
+                font-size: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <!-- Navigation -->
+    <!-- ✅ NAVBAR RESPONSIF -->
     <nav class="navbar navbar-expand-lg navbar-custom sticky-top">
         <div class="container">
+            <!-- Brand -->
             <a class="navbar-brand fw-bold" href="dashboard.php">
-                <i class="fas fa-arrow-left me-2 text-primary"></i>Dashboard Mahasiswa polinela
+                <i class="fas fa-arrow-left me-2 text-primary"></i>Dashboard Mahasiswa Polinela
             </a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="dashboard.php">
-                    <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                </a>
-                <a class="nav-link" href="../index.php">
-                    <i class="fas fa-home me-1"></i>Berandaa
-                </a>
-                <a class="nav-link" href="../auth/logout.php">
-                    <i class="fas fa-sign-out-alt me-1"></i>Logoutt
-                </a>
+
+            <!-- Toggle Button for Mobile -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <!-- Menu Items -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="dashboard.php">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="../index.php">
+                            <i class="fas fa-home me-1"></i>Beranda
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="../auth/logout.php">
+                            <i class="fas fa-sign-out-alt me-1"></i>Logout
+                        </a>
+                    </li>
+                </ul>
             </div>
         </div>
     </nav>
@@ -357,7 +450,7 @@ if ($filter_kategori) {
         <div class="container">
             <!-- Page Header -->
             <div class="page-header">
-                <h2 class="fw-bold mb-3">
+                <h2 class="fw-bold mb-2">
                     <i class="fas fa-users text-primary me-2"></i>Daftar Unit Kegiatan Mahasiswa
                 </h2>
                 <p class="text-muted mb-0">Pilih UKM yang sesuai dengan minat dan bakat Anda</p>
@@ -380,10 +473,10 @@ if ($filter_kategori) {
 
             <!-- Filter Section -->
             <div class="filter-section">
-                <h6 class="fw-bold mb-3">
+                <h6 class="fw-bold mb-2">
                     <i class="fas fa-filter text-primary me-2"></i>Filter Berdasarkan Kategori
                 </h6>
-                <div class="d-flex flex-wrap">
+                <div class="d-flex flex-wrap justify-content-center">
                     <a href="daftar_ukm.php" class="filter-btn <?= !$filter_kategori ? 'active' : '' ?>">
                         <i class="fas fa-th-large me-1"></i>Semua
                     </a>
@@ -399,10 +492,10 @@ if ($filter_kategori) {
             <!-- UKM Grid -->
             <?php if (empty($ukm_list)): ?>
                 <div class="empty-state">
-                    <i class="fas fa-search fa-4x text-muted mb-4"></i>
-                    <h4>Tidak ada UKM yang ditemukan</h4>
+                    <i class="fas fa-search fa-4x text-muted mb-3"></i>
+                    <h5>Tidak ada UKM yang ditemukan</h5>
                     <p class="text-muted">Coba ubah filter atau kembali ke halaman utama</p>
-                    <a href="daftar_ukm.php" class="btn btn-primary mt-3">
+                    <a href="daftar_ukm.php" class="btn btn-primary mt-2">
                         <i class="fas fa-refresh me-1"></i>Reset Filter
                     </a>
                 </div>
@@ -418,7 +511,7 @@ if ($filter_kategori) {
                             </div>
                             <div class="ukm-body">
                                 <p class="ukm-description">
-                                    <?= htmlspecialchars($ukm['deskripsi'] ?? 'Tidak ada deskripsi tersedia.') ?>
+                                    <?= htmlspecialchars(substr($ukm['deskripsi'] ?? 'Tidak ada deskripsi.', 0, 120)) ?>...
                                 </p>
                                 
                                 <div class="ukm-meta">
@@ -478,8 +571,8 @@ if ($filter_kategori) {
     </div>
 
     <!-- Modal Pendaftaran -->
-    <div class="modal fade" id="daftarModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
+    <div class="modal fade" id="daftarModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
@@ -494,6 +587,15 @@ if ($filter_kategori) {
                         <div class="alert alert-info">
                             <i class="fas fa-info-circle me-2"></i>
                             Anda akan mendaftar ke UKM: <strong id="modal_ukm_nama"></strong>
+                        </div>
+
+                        <!-- Bagian Divisi -->
+                        <div id="divisi-section" class="mb-3">
+                            <label for="divisi_id" class="form-label">Pilih Divisi (Opsional)</label>
+                            <select class="form-select" id="divisi_id" name="divisi_id">
+                                <option value="">-- Pilih Divisi --</option>
+                            </select>
+                            <div class="form-text">Pilih divisi yang sesuai dengan minat Anda.</div>
                         </div>
 
                         <div class="form-floating mb-3">
@@ -531,30 +633,87 @@ if ($filter_kategori) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function openDaftarModal(ukmId, ukmNama) {
-            document.getElementById('modal_ukm_id').value = ukmId;
-            document.getElementById('modal_ukm_nama').textContent = ukmNama;
-            
-            // Reset form
-            document.getElementById('alasan_bergabung').value = '';
-            document.getElementById('pengalaman_organisasi').value = '';
-            
-            // Show modal
-            new bootstrap.Modal(document.getElementById('daftarModal')).show();
+        let daftarModal = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const modalElement = document.getElementById('daftarModal');
+            if (modalElement) {
+                daftarModal = new bootstrap.Modal(modalElement);
+            }
+        });
+
+        function loadDivisi(ukmId) {
+            const divisiSection = document.getElementById('divisi-section');
+            const select = document.getElementById('divisi_id');
+            select.innerHTML = '<option value="">-- Memuat... --</option>';
+            divisiSection.style.display = 'block';
+
+            fetch(`daftar_ukm.php?ajax=get_divisi&ukm_id=${ukmId}`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(data => {
+                    select.innerHTML = '<option value="">-- Pilih Divisi (Opsional) --</option>';
+                    if (data.length === 0) {
+                        select.innerHTML = '<option value="">UKM ini tidak memiliki divisi</option>';
+                        select.disabled = true;
+                    } else {
+                        select.disabled = false;
+                        data.forEach(divisi => {
+                            const option = document.createElement('option');
+                            option.value = divisi.id;
+                            option.textContent = divisi.nama_divisi;
+                            select.appendChild(option);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading divisi:', error);
+                    select.innerHTML = '<option value="">Gagal memuat divisi</option>';
+                    select.disabled = true;
+                });
         }
 
-        // Auto-open modal jika ada selected UKM
-        <?php if ($selected_ukm && !$selected_ukm['sudah_daftar']): ?>
+        function openDaftarModal(ukmId, ukmNama) {
+            const modalElement = document.getElementById('daftarModal');
+            if (!modalElement || !daftarModal) {
+                console.error('Modal not initialized!');
+                return;
+            }
+
+            const ukmIdInput = document.getElementById('modal_ukm_id');
+            const ukmNamaElement = document.getElementById('modal_ukm_nama');
+            const alasanInput = document.getElementById('alasan_bergabung');
+            const pengalamanInput = document.getElementById('pengalaman_organisasi');
+
+            if (ukmIdInput) ukmIdInput.value = ukmId;
+            if (ukmNamaElement) ukmNamaElement.textContent = ukmNama || 'UKM ini';
+            if (alasanInput) alasanInput.value = '';
+            if (pengalamanInput) pengalamanInput.value = '';
+
+            modalElement.addEventListener('shown.bs.modal', function onShown() {
+                loadDivisi(ukmId);
+                modalElement.removeEventListener('shown.bs.modal', onShown);
+            });
+
+            daftarModal.show();
+        }
+
+        // 🟢 Auto-open modal
+        <?php if ($auto_open_ukm_id): ?>
             document.addEventListener('DOMContentLoaded', function() {
-                openDaftarModal(<?= $selected_ukm['id'] ?>, '<?= htmlspecialchars($selected_ukm['nama_ukm'], ENT_QUOTES) ?>');
+                setTimeout(function() {
+                    openDaftarModal(<?= $auto_open_ukm_id ?>, 'UKM ini');
+                }, 500);
             });
         <?php endif; ?>
 
-        // Auto dismiss alerts
+        // Auto-dismiss alerts
         setTimeout(function() {
-            var alerts = document.querySelectorAll('.alert');
-            alerts.forEach(function(alert) {
-                var bsAlert = new bootstrap.Alert(alert);
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(alert => {
+                const bsAlert = new bootstrap.Alert(alert);
                 bsAlert.close();
             });
         }, 5000);

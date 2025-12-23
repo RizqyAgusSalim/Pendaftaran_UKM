@@ -1,5 +1,5 @@
 <?php
-// ukm/detail.php — TAMPILKAN SEMUA DATA DARI admin/kelola_ukm.php
+// ukm/detail.php — TAMPILKAN SEMUA DATA DARI admin/kelola_ukm.php + DIVISI
 require_once '../config/database.php';
 require_once '../config/functions.php';
 
@@ -54,6 +54,16 @@ try {
 } catch (PDOException $e) {
     $kegiatan_list = [];
 }
+
+// 🔹 AMBIL DIVISI
+$divisi_list = [];
+try {
+    $stmt_div = $db->prepare("SELECT nama_divisi, deskripsi FROM divisi WHERE ukm_id = ? ORDER BY nama_divisi ASC");
+    $stmt_div->execute([$ukm_id]);
+    $divisi_list = $stmt_div->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $divisi_list = [];
+}
 ?>
 
 <!DOCTYPE html>
@@ -62,6 +72,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($ukm['nama_ukm']) ?> - Detail UKM</title>
+    <!-- ✅ DIPERBAIKI: HAPUS SPASI DI AKHIR URL -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -356,6 +367,37 @@ try {
                     </div>
                 </div>
 
+                <!-- ✅ DIVISI UKM -->
+                <div class="card info-card mb-4">
+                    <div class="card-body p-4">
+                        <h4 class="text-center fw-bold mb-4 text-secondary">
+                            <i class="fas fa-sitemap me-2"></i> Divisi
+                        </h4>
+
+                        <?php if (empty($divisi_list)): ?>
+                            <div class="text-center py-3 text-muted">
+                                <i class="fas fa-info-circle fa-2x mb-2"></i>
+                                <p class="mb-0">UKM ini belum memiliki divisi.</p>
+                            </div>
+                        <?php else: ?>
+                            <div class="row g-3">
+                                <?php foreach ($divisi_list as $divisi): ?>
+                                    <div class="col-12">
+                                        <div class="border rounded-3 p-3 bg-light">
+                                            <h6 class="fw-bold mb-1"><?= htmlspecialchars($divisi['nama_divisi']) ?></h6>
+                                            <p class="text-muted mb-0">
+                                                <?= !empty($divisi['deskripsi']) 
+                                                    ? htmlspecialchars($divisi['deskripsi']) 
+                                                    : '<em>Tidak ada deskripsi</em>' ?>
+                                            </p>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
                 <!-- Tombol Daftar -->
                 <div class="card info-card border-0" style="background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);">
                     <div class="card-body p-4 text-center text-white">
@@ -388,6 +430,7 @@ try {
         </div>
     </footer>
 
+    <!-- ✅ DIPERBAIKI: HAPUS SPASI DI AKHIR URL -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

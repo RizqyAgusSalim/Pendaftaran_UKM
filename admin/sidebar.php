@@ -43,6 +43,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <a class="nav-link <?= isActive(['kelola_ukm.php']) ?>" href="kelola_ukm.php">
                 <i class="fas fa-building me-2"></i> Kelola UKM
             </a>
+            <!-- ✅ TAMBAHAN: Kelola Divisi -->
+            <a class="nav-link <?= isActive(['kelola_divisi.php']) ?>" href="kelola_divisi.php">
+                <i class="fas fa-sitemap me-2"></i> Kelola Divisi
+            </a>
             <a class="nav-link <?= isActive(['kelola_mahasiswa.php']) ?>" href="kelola_mahasiswa.php">
                 <i class="fas fa-user-graduate me-2"></i> Data Anggota
             </a>

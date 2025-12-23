@@ -1,5 +1,5 @@
 <?php
-// Dashboard Mahasiswa - versi FINAL
+// Dashboard Mahasiswa - versi FINAL + DIVISI + RESPONSIF HP & LAPTOP + NAVBAR RAPI
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -44,7 +44,25 @@ if (!$mahasiswa) {
     exit;
 }
 
-// Ambil pendaftaran
+// 🔹 Ambil divisi dari pendaftaran yang diterima (terbaru)
+$divisi_mahasiswa = null;
+$stmt_divisi = $db->prepare("
+    SELECT d.nama_divisi 
+    FROM pendaftaran p
+    LEFT JOIN divisi d ON p.divisi_id = d.id
+    WHERE p.mahasiswa_id = ? AND p.status = 'diterima'
+    ORDER BY p.created_at DESC
+    LIMIT 1
+");
+$stmt_divisi->execute([$mahasiswa_id]);
+$divisi_row = $stmt_divisi->fetch(PDO::FETCH_ASSOC);
+if ($divisi_row) {
+    $divisi_mahasiswa = !empty($divisi_row['nama_divisi']) 
+        ? htmlspecialchars($divisi_row['nama_divisi']) 
+        : 'Umum';
+}
+
+// 🔹 AMBIL PENDAFTARAN + DIVISI
 $sql = "
     SELECT 
         p.id AS pendaftaran_id,
@@ -52,10 +70,12 @@ $sql = "
         p.status_keanggotaan,
         p.created_at,
         u.nama_ukm,
-        k.nama_kategori
+        k.nama_kategori,
+        d.nama_divisi
     FROM pendaftaran p
     JOIN ukm u ON p.ukm_id = u.id
     LEFT JOIN kategori_ukm k ON u.kategori_id = k.id
+    LEFT JOIN divisi d ON p.divisi_id = d.id
     WHERE p.mahasiswa_id = ?
     ORDER BY p.created_at DESC
 ";
@@ -78,7 +98,7 @@ foreach ($pendaftaran_saya as $p) {
 }
 $total_pendaftaran = count($pendaftaran_saya);
 
-// Ambil SEMUA UKM aktif (sesuai struktur database Anda)
+// Ambil SEMUA UKM aktif
 $stmt = $db->prepare("
     SELECT 
         u.id,
@@ -98,8 +118,6 @@ $semua_ukm = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $stmt_cek = $db->prepare("SELECT ukm_id FROM pendaftaran WHERE mahasiswa_id = ? AND status = 'diterima'");
 $stmt_cek->execute([$mahasiswa_id]);
 $ukm_diterima = $stmt_cek->fetchAll(PDO::FETCH_COLUMN);
-
-// Buat array untuk pengecekan cepat
 $ukm_diterima_set = array_flip($ukm_diterima);
 ?>
 
@@ -123,71 +141,156 @@ $ukm_diterima_set = array_flip($ukm_diterima);
             backdrop-filter: blur(10px);
             box-shadow: 0 2px 20px rgba(0,0,0,0.1);
         }
-        .dashboard-container { padding: 2rem 0; }
-        .welcome-card { background: white; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); padding: 2rem; margin-bottom: 2rem; text-align: center; }
-        .stats-card { background: white; border-radius: 15px; padding: 1.5rem; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.08); border: none; margin-bottom: 1rem; transition: transform 0.3s ease; }
+        .dashboard-container { padding: 1.5rem 0; }
+        .welcome-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .stats-card {
+            background: white;
+            border-radius: 15px;
+            padding: 1.25rem;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border: none;
+            margin-bottom: 1rem;
+            transition: transform 0.3s ease;
+        }
         .stats-card:hover { transform: translateY(-5px); }
-        .stats-number { font-size: 2rem; font-weight: bold; color: #667eea; margin-bottom: 0.5rem; }
-        .content-card { background: white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
-        .btn-primary-custom { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 25px; padding: 0.8rem 2rem; font-weight: 600; color: white; text-decoration: none; transition: all 0.3s ease; }
-        .btn-primary-custom:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3); color: white; }
-        .empty-state { padding: 3rem; text-align: center; color: #6c757d; }
+        .content-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            margin-bottom: 1.5rem;
+        }
+        .empty-state {
+            padding: 2rem;
+            text-align: center;
+            color: #6c757d;
+        }
         .ukm-logo {
-            width: 80px;
-            height: 80px;
+            width: 70px;
+            height: 70px;
             object-fit: cover;
             border-radius: 50%;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
         .category-badge {
             background: #3498db;
             color: white;
-            padding: 5px 12px;
+            padding: 4px 10px;
             border-radius: 20px;
-            font-size: 0.8em;
+            font-size: 0.75rem;
             display: inline-block;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         .ukm-card {
             border: none;
             border-radius: 15px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.1);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
+            height: 100%;
         }
         .ukm-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 10px 25px rgba(0,0,0,0.15);
         }
+        .profile-img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            margin: 0 auto 1rem;
+        }
+        @media (min-width: 768px) {
+            .profile-img {
+                margin: 0 0 0 auto;
+            }
+        }
+        .btn-grad {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 25px;
+            font-weight: 600;
+            color: white;
+        }
+        .btn-grad:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+            color: white;
+        }
+
+        /* Perbaikan Navbar */
+        .navbar-toggler {
+            border: none;
+            padding: 0.5rem 0.75rem;
+        }
+        .navbar-toggler-icon {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(0,0,0,0.5)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+        }
+        .navbar-nav .nav-link {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+        @media (max-width: 767.98px) {
+            .navbar-nav {
+                margin-top: 1rem;
+            }
+            .navbar-brand {
+                font-size: 1.1rem;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- ✅ NAVBAR YANG DIPERBAIKI -->
     <nav class="navbar navbar-expand-lg navbar-custom sticky-top">
         <div class="container">
+            <!-- Brand -->
             <a class="navbar-brand fw-bold" href="#">
                 <i class="fas fa-graduation-cap me-2 text-primary"></i>Dashboard Mahasiswa
             </a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="../index.php"><i class="fas fa-home me-1"></i>Beranda</a>
-                <a class="nav-link" href="edit_profil.php"><i class="fas fa-user-cog me-1"></i>Profil</a>
-                <a class="nav-link" href="../auth/logout.php"><i class="fas fa-sign-out-alt me-1"></i>Logout</a>
+
+            <!-- Toggle Button for Mobile -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <!-- Menu Items -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="../index.php"><i class="fas fa-home me-1"></i>Beranda</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="edit_profil.php"><i class="fas fa-user-cog me-1"></i>Profil</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="../auth/logout.php"><i class="fas fa-sign-out-alt me-1"></i>Logout</a>
+                    </li>
+                </ul>
             </div>
         </div>
     </nav>
 
     <div class="dashboard-container">
         <div class="container">
+            <!-- Welcome Card -->
             <div class="welcome-card">
                 <div class="row align-items-center">
-                    <div class="col-md-2">
+                    <div class="col-12 col-md-2 mb-3 mb-md-0 text-center text-md-start">
                         <?php
                             $foto_path = $mahasiswa['foto'] ?? '';
                             $default_foto = 'https://via.placeholder.com/150?text=No+Photo';
                             $foto_url = !empty($foto_path) ? '../uploads/' . htmlspecialchars($foto_path) : $default_foto;
                         ?>
-                        <img src="<?= $foto_url ?>" alt="Foto Profil" class="rounded-circle img-fluid" style="width: 100px; height: 100px; object-fit: cover;">
+                        <img src="<?= $foto_url ?>" alt="Foto Profil" class="rounded-circle profile-img">
                     </div>
-                    <div class="col-md-10 text-start">
+                    <div class="col-12 col-md-10 text-center text-md-start">
                         <h2 class="fw-bold">Selamat Datang, <?= htmlspecialchars($mahasiswa['nama'], ENT_QUOTES, 'UTF-8') ?>!</h2>
                         <p class="mb-1">
                             <i class="fas fa-id-card me-2 text-primary"></i>
@@ -197,6 +300,12 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                             <i class="fas fa-graduation-cap me-2 text-primary"></i>
                             <strong>Jurusan:</strong> <?= htmlspecialchars($mahasiswa['jurusan'], ENT_QUOTES, 'UTF-8') ?>
                         </p>
+                        <?php if ($divisi_mahasiswa !== null): ?>
+                            <p class="mb-1">
+                                <i class="fas fa-sitemap me-2 text-primary"></i>
+                                <strong>Divisi:</strong> <?= $divisi_mahasiswa ?>
+                            </p>
+                        <?php endif; ?>
                         <p class="mb-0">
                             <i class="fas fa-calendar me-2 text-primary"></i>
                             <strong>Angkatan:</strong> <?= htmlspecialchars($mahasiswa['angkatan'], ENT_QUOTES, 'UTF-8') ?>
@@ -205,26 +314,27 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                 </div>
             </div>
 
+            <!-- Statistik -->
             <div class="row g-4 mb-4">
-                <div class="col-md-3 col-sm-6">
+                <div class="col-6 col-sm-3">
                     <div class="stats-card">
                         <div class="stats-number"><?= (int)$total_pendaftaran ?></div>
                         <div class="text-muted">Total Pendaftaran</div>
                     </div>
                 </div>
-                <div class="col-md-3 col-sm-6">
+                <div class="col-6 col-sm-3">
                     <div class="stats-card">
                         <div class="stats-number text-warning"><?= (int)$pending ?></div>
                         <div class="text-muted">Menunggu</div>
                     </div>
                 </div>
-                <div class="col-md-3 col-sm-6">
+                <div class="col-6 col-sm-3">
                     <div class="stats-card">
                         <div class="stats-number text-success"><?= (int)$diterima ?></div>
                         <div class="text-muted">Diterima</div>
                     </div>
                 </div>
-                <div class="col-md-3 col-sm-6">
+                <div class="col-6 col-sm-3">
                     <div class="stats-card">
                         <div class="stats-number text-danger"><?= (int)$ditolak ?></div>
                         <div class="text-muted">Ditolak</div>
@@ -232,6 +342,7 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                 </div>
             </div>
 
+            <!-- Pendaftaran Saya -->
             <div class="row g-4">
                 <div class="col-12">
                     <div class="content-card">
@@ -239,7 +350,6 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                             <h5 class="fw-bold mb-0">
                                 <i class="fas fa-list-alt text-primary me-2"></i>Pendaftaran Saya
                             </h5>
-                            <!-- ✅ TOMBOL "Daftar UKM" DIHAPUS SESUAI PERMINTAAN -->
                         </div>
                         <div class="card-body">
                             <?php if (empty($pendaftaran_saya)): ?>
@@ -253,6 +363,7 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                                         <thead>
                                             <tr>
                                                 <th>UKM</th>
+                                                <th>Divisi</th>
                                                 <th>Tanggal</th>
                                                 <th>Status</th>
                                                 <th>Aksi</th>
@@ -263,6 +374,9 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                                                 <?php
                                                     $nama_ukm = htmlspecialchars($p['nama_ukm'] ?? '-', ENT_QUOTES, 'UTF-8');
                                                     $nama_kategori = htmlspecialchars($p['nama_kategori'] ?? '-', ENT_QUOTES, 'UTF-8');
+                                                    $nama_divisi = !empty($p['nama_divisi']) 
+                                                        ? htmlspecialchars($p['nama_divisi']) 
+                                                        : '<span class="text-muted">Umum</span>';
                                                     $created_at_raw = $p['created_at'] ?? '';
                                                     $created_at = '-';
                                                     if (!empty($created_at_raw) && strtotime($created_at_raw) !== false) {
@@ -297,6 +411,7 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                                                         <strong><?= $nama_ukm ?></strong><br>
                                                         <small class="text-muted"><?= $nama_kategori ?></small>
                                                     </td>
+                                                    <td><?= $nama_divisi ?></td>
                                                     <td><?= $created_at ?></td>
                                                     <td><span class="badge <?= $badge_class ?>"><?= $status_text ?></span></td>
                                                     <td>
@@ -318,7 +433,7 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                     </div>
                 </div>
 
-                <!-- ✅ UKM TERSEDIA: SESUAI DENGAN DATABASE & INDEX.PHP -->
+                <!-- Daftar UKM -->
                 <div class="col-12">
                     <div class="content-card">
                         <div class="card-header bg-white border-0 p-4">
@@ -345,7 +460,7 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                                                 : '';
                                             $sudah_diterima = isset($ukm_diterima_set[$ukm_id]);
                                         ?>
-                                        <div class="col-md-6 col-lg-4">
+                                        <div class="col-12 col-md-6 col-lg-4">
                                             <div class="card ukm-card h-100">
                                                 <div class="card-body text-center">
                                                     <?php if ($logo_url): ?>
@@ -364,7 +479,7 @@ $ukm_diterima_set = array_flip($ukm_diterima);
                                                         <?php if ($sudah_diterima): ?>
                                                             <span class="badge bg-success text-white">Sudah Bergabung</span>
                                                         <?php else: ?>
-                                                            <a href="../ukm/detail.php?id=<?= $ukm_id ?>" class="btn btn-primary" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 25px; padding: 10px 25px; font-weight: 600; color: white; width: 100%;">
+                                                            <a href="../ukm/detail.php?id=<?= $ukm_id ?>" class="btn btn-grad w-100">
                                                                 <i class="fas fa-info-circle me-1"></i> Lihat Detail
                                                             </a>
                                                         <?php endif; ?>

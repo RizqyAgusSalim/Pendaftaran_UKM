@@ -1,4 +1,5 @@
 <?php
+// admin/kelola_berita.php — VERSI DENGAN LAYOUT TERPADU
 session_start(); // ← WAJIB DI AWAL
 require_once '../config/database.php';
 require_once '../config/functions.php';
@@ -22,6 +23,11 @@ if (!isset($_SESSION['ukm_id'])) {
 }
 
 $ukm_id = (int)$_SESSION['ukm_id'];
+
+// Ambil nama UKM untuk judul & navbar
+$stmt_ukm = $db->prepare("SELECT nama_ukm FROM ukm WHERE id = ?");
+$stmt_ukm->execute([$ukm_id]);
+$nama_ukm = $stmt_ukm->fetchColumn() ?? "UKM Anda";
 
 // --- HAPUS BERITA ---
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
@@ -54,133 +60,98 @@ $stmt = $db->prepare("
 ");
 $stmt->execute([$ukm_id]);
 $berita_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// ✅ SET JUDUL & NAMA UKM UNTUK NAVBAR
+$page_title = "Kelola Berita - " . htmlspecialchars($nama_ukm);
 ?>
 
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kelola Berita - Admin UKM</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .sidebar {
-            min-height: 100vh;
-            background: linear-gradient(135deg, #2c3e50, #34495e);
-        }
-        .sidebar .nav-link {
-            color: rgba(255,255,255,0.8);
-            padding: 15px 20px;
-            border-radius: 0;
-            margin-bottom: 2px;
-        }
-        .sidebar .nav-link:hover, .sidebar .nav-link.active {
-            background: rgba(255,255,255,0.1);
-            color: white;
-        }
-        .main-content {
-            background: #f8f9fa;
-            min-height: 100vh;
-        }
-        .news-thumb {
-            width: 80px;
-            height: 60px;
-            object-fit: cover;
-            border-radius: 5px;
-        }
-        .status-badge {
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 0.85em;
-            font-weight: bold;
-        }
-    </style>
-</head>
-<body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar dari file terpisah -->
-            <div class="col-md-3 col-lg-2 px-0">
-                <?php include 'sidebar.php'; ?>
-            </div>
+<?php include 'layout.php'; ?>
 
-            <!-- Konten Utama -->
-            <div class="col-md-9 col-lg-10 main-content">
-                <div class="p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h2><i class="fas fa-newspaper me-2"></i>Kelola Berita</h2>
-                        <a href="tambah_berita.php" class="btn btn-primary">
-                            <i class="fas fa-plus"></i> Tambah Berita Baru
-                        </a>
-                    </div>
+<style>
+    .news-thumb {
+        width: 80px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 5px;
+    }
+    .status-badge {
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-size: 0.85em;
+        font-weight: bold;
+    }
+</style>
 
-                    <?php displayAlert(); ?>
-
-                    <?php if (empty($berita_list)): ?>
-                        <div class="text-center py-5">
-                            <i class="fas fa-newspaper fa-3x text-muted mb-3"></i>
-                            <h5>Belum ada berita</h5>
-                            <p class="text-muted">Buat berita pertama Anda untuk UKM ini.</p>
-                            <a href="tambah_berita.php" class="btn btn-primary">Buat Berita Sekarang</a>
-                        </div>
-                    <?php else: ?>
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Gambar</th>
-                                        <th>Judul</th>
-                                        <th>Penulis</th>
-                                        <th>Tanggal</th>
-                                        <th>Status</th>
-                                        <th>Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($berita_list as $berita): ?>
-                                        <tr>
-                                            <td>
-                                                <?php if (!empty($berita['gambar'])): ?>
-                                                    <img src="../uploads/<?= htmlspecialchars($berita['gambar']) ?>" class="news-thumb">
-                                                <?php else: ?>
-                                                    <span class="text-muted">–</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <strong><?= htmlspecialchars(substr($berita['judul'], 0, 50)) ?></strong>
-                                            </td>
-                                            <td><?= htmlspecialchars($berita['penulis']) ?></td>
-                                            <td><?= formatTanggal($berita['tanggal_publikasi']) ?></td>
-                                            <td>
-                                                <?php if ($berita['status'] === 'published'): ?>
-                                                    <span class="status-badge bg-success text-white">Publikasi</span>
-                                                <?php else: ?>
-                                                    <span class="status-badge bg-warning text-dark">Draft</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <a href="edit_berita.php?id=<?= $berita['id'] ?>" class="btn btn-sm btn-outline-primary" title="Edit">
-                                                    <i class="fas fa-edit"></i>
-                                                </a>
-                                                <a href="kelola_berita.php?action=delete&id=<?= $berita['id'] ?>" 
-                                                   class="btn btn-sm btn-outline-danger" 
-                                                   title="Hapus"
-                                                   onclick="return confirm(<?= json_encode('Yakin hapus berita "' . addslashes($berita['judul']) . '"?') ?>)">
-                                                    <i class="fas fa-trash"></i>
-                                                </a>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
+<!-- KONTEN UTAMA -->
+<div class="p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-newspaper me-2"></i>Kelola Berita</h2>
+        <a href="tambah_berita.php" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Tambah Berita Baru
+        </a>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+    <?php displayAlert(); ?>
+
+    <?php if (empty($berita_list)): ?>
+        <div class="text-center py-5">
+            <i class="fas fa-newspaper fa-3x text-muted mb-3"></i>
+            <h5>Belum ada berita</h5>
+            <p class="text-muted">Buat berita pertama Anda untuk <strong><?= htmlspecialchars($nama_ukm) ?></strong>.</p>
+            <a href="tambah_berita.php" class="btn btn-primary">Buat Berita Sekarang</a>
+        </div>
+    <?php else: ?>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Gambar</th>
+                        <th>Judul</th>
+                        <th>Penulis</th>
+                        <th>Tanggal</th>
+                        <th>Status</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($berita_list as $berita): ?>
+                        <tr>
+                            <td>
+                                <?php if (!empty($berita['gambar'])): ?>
+                                    <img src="../uploads/<?= htmlspecialchars($berita['gambar']) ?>" class="news-thumb">
+                                <?php else: ?>
+                                    <span class="text-muted">–</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <strong><?= htmlspecialchars(substr($berita['judul'], 0, 50)) ?></strong>
+                            </td>
+                            <td><?= htmlspecialchars($berita['penulis']) ?></td>
+                            <td><?= formatTanggal($berita['tanggal_publikasi']) ?></td>
+                            <td>
+                                <?php if ($berita['status'] === 'published'): ?>
+                                    <span class="status-badge bg-success text-white">Publikasi</span>
+                                <?php else: ?>
+                                    <span class="status-badge bg-warning text-dark">Draft</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <a href="edit_berita.php?id=<?= $berita['id'] ?>" class="btn btn-sm btn-outline-primary" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="kelola_berita.php?action=delete&id=<?= $berita['id'] ?>" 
+                                   class="btn btn-sm btn-outline-danger" 
+                                   title="Hapus"
+                                   onclick="return confirm(<?= json_encode('Yakin hapus berita "' . addslashes($berita['judul']) . '"?') ?>)">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</div>
+
+<?php include 'footer.php'; ?>

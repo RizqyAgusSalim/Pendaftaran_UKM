@@ -13,7 +13,7 @@ $db = $database->getConnection();
 $mahasiswa_id = $_SESSION['user_id'];
 $pendaftaran_id = $_GET['id'] ?? 0;
 
-// Ambil data pendaftaran + relasi
+// 🔹 AMBIL DATA PENDAFTARAN + DIVISI
 $stmt = $db->prepare("
     SELECT 
         p.id, p.status, p.status_keanggotaan,
@@ -23,11 +23,13 @@ $stmt = $db->prepare("
         m.foto AS foto_mahasiswa,
         u.nama_ukm,
         u.logo AS logo_ukm,
-        k.nama_kategori
+        k.nama_kategori,
+        d.nama_divisi
     FROM pendaftaran p
     JOIN mahasiswa m ON p.mahasiswa_id = m.id
     JOIN ukm u ON p.ukm_id = u.id
     LEFT JOIN kategori_ukm k ON u.kategori_id = k.id
+    LEFT JOIN divisi d ON p.divisi_id = d.id  -- 🔹 JOIN DIVISI
     WHERE p.id = ? AND p.mahasiswa_id = ?
 ");
 $stmt->execute([$pendaftaran_id, $mahasiswa_id]);
@@ -44,6 +46,7 @@ if (!$data) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Detail Pendaftaran - <?= htmlspecialchars($data['nama_ukm']) ?></title>
+    <!-- ✅ DIPERBAIKI: HAPUS SPASI DI AKHIR URL -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -254,6 +257,12 @@ if (!$data) {
                     <div class="card-body">
                         <h5 class="mb-3"><i class="fas fa-info-circle text-primary"></i> Informasi Pendaftaran</h5>
                         <p><strong>UKM:</strong> <?= htmlspecialchars($data['nama_ukm']) ?></p>
+                        <!-- 🔹 TAMBAHKAN DIVISI -->
+                        <p><strong>Divisi:</strong> 
+                            <?= !empty($data['nama_divisi']) 
+                                ? htmlspecialchars($data['nama_divisi']) 
+                                : '<span class="text-muted">Umum</span>' ?>
+                        </p>
                         <p><strong>Status Pendaftaran:</strong> 
                             <span class="badge bg-<?= ($data['status'] === 'diterima') ? 'success' : (($data['status'] === 'ditolak') ? 'danger' : 'warning') ?>">
                                 <?= ucfirst(htmlspecialchars($data['status'])) ?>
@@ -313,6 +322,12 @@ if (!$data) {
                             <div class="kta-info">
                                 <div class="kta-name"><?= htmlspecialchars($data['nama_mahasiswa']) ?></div>
                                 <div class="kta-role">Mahasiswa Anggota</div>
+                                <!-- 🔹 TAMPILKAN DIVISI DI KTA -->
+                                <div class="kta-role">
+                                    <?= !empty($data['nama_divisi']) 
+                                        ? htmlspecialchars($data['nama_divisi']) 
+                                        : 'Umum' ?>
+                                </div>
                                 <div class="kta-role"><?= htmlspecialchars($data['jurusan']) ?></div>
                                 <div class="kta-nim">NIM: <?= htmlspecialchars($data['nim']) ?></div>
                             </div>
@@ -339,6 +354,7 @@ if (!$data) {
         </div>
     </div>
 
+    <!-- ✅ DIPERBAIKI: HAPUS SPASI DI AKHIR URL -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
