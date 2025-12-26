@@ -116,265 +116,230 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ubah_password'])) {
     }
     redirect('kelola_mahasiswa.php');
 }
+
+// Set page title
+$page_title = "Kelola Mahasiswa - Super Admin";
+
+// Start output buffering untuk content
+ob_start();
 ?>
 
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kelola Mahasiswa - Super Admin</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        body {
-            background: #f5f6fa;
-        }
-        .sidebar {
-            height: 100vh;
-            background: #2c3e50;
-            padding-top: 20px;
-            color: white;
-            position: fixed;
-            left: 0;
-            top: 0;
-            z-index: 1000;
-        }
-        .sidebar a {
-            padding: 12px;
-            display: block;
-            color: white;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .sidebar a:hover {
-            background: #1abc9c;
-            border-radius: 5px;
-        }
-        .main-content {
-            margin-left: 16.66%;
-            padding: 20px;
-        }
-        .card-custom {
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-        }
-        .status-badge {
-            font-size: 0.85em;
-            padding: 0.35em 0.5em;
-        }
-        .filter-section {
-            background: #fff;
-            padding: 16px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-    </style>
-</head>
-<body>
+<!-- KONTEN KELOLA MAHASISWA -->
+<h2 class="mb-4"><i class="fas fa-user-graduate"></i> Kelola Mahasiswa</h2>
 
-<div class="container-fluid">
-    <div class="row">
+<?php if (isset($_SESSION['flash_message'])): ?>
+    <div class="alert alert-<?= $_SESSION['flash_type'] ?> alert-dismissible fade show" role="alert">
+        <?= $_SESSION['flash_message']; unset($_SESSION['flash_message']); unset($_SESSION['flash_type']); ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
 
-        <!-- SIDEBAR (diganti dengan include) -->
-        <?php include 'sidebar.php'; ?>
+<!-- FILTER SECTION -->
+<div class="filter-section mb-4">
+    <form method="GET" class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label">Filter UKM</label>
+            <select name="filter_ukm" class="form-select">
+                <option value="">— Semua UKM —</option>
+                <?php foreach ($all_ukm as $ukm): ?>
+                    <option value="<?= $ukm['id'] ?>" <?= ($filter_ukm == $ukm['id']) ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($ukm['nama_ukm']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Status Pendaftaran</label>
+            <select name="filter_status" class="form-select">
+                <option value="">— Semua Status —</option>
+                <option value="menunggu" <?= ($filter_status === 'menunggu') ? 'selected' : '' ?>>Menunggu</option>
+                <option value="diterima" <?= ($filter_status === 'diterima') ? 'selected' : '' ?>>Diterima</option>
+                <option value="ditolak" <?= ($filter_status === 'ditolak') ? 'selected' : '' ?>>Ditolak</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Urutkan Jurusan</label>
+            <select name="sort_jurusan" class="form-select">
+                <option value="asc" <?= ($sort_jurusan === 'asc') ? 'selected' : '' ?>>A → Z</option>
+                <option value="desc" <?= ($sort_jurusan === 'desc') ? 'selected' : '' ?>>Z → A</option>
+            </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary me-2">
+                <i class="fas fa-filter"></i> Terapkan
+            </button>
+            <a href="kelola_mahasiswa.php" class="btn btn-outline-secondary">
+                <i class="fas fa-undo"></i> Reset
+            </a>
+        </div>
+    </form>
+</div>
 
-        <!-- KONTEN -->
-        <div class="col-10 main-content">
-            <h2 class="mb-4"><i class="fas fa-user-graduate"></i> Kelola Mahasiswa</h2>
+<div class="card card-custom">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>NIM</th>
+                        <th>Nama</th>
+                        <th>Jurusan</th>
+                        <th>Email</th>
+                        <th>UKM & Status</th>
+                        <th>Status Akun</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($mahasiswa_list)): ?>
+                        <tr>
+                            <td colspan="8" class="text-center text-muted">Tidak ada data sesuai filter.</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($mahasiswa_list as $m): ?>
+                            <tr>
+                                <td><?= $m['id'] ?></td>
+                                <td><?= htmlspecialchars($m['nim']) ?></td>
+                                <td><?= htmlspecialchars($m['nama']) ?></td>
+                                <td><?= htmlspecialchars($m['jurusan'] ?? '—') ?></td>
+                                <td><?= htmlspecialchars($m['email']) ?></td>
+                                <td>
+                                    <span class="fw-bold"><?= htmlspecialchars($m['nama_ukm']) ?></span>
+                                    <br>
+                                    <span class="badge bg-<?= 
+                                        $m['status_pendaftaran'] === 'diterima' ? 'success' : 
+                                        ($m['status_pendaftaran'] === 'ditolak' ? 'danger' : 'warning')
+                                    ?> status-badge">
+                                        <?= ucfirst($m['status_pendaftaran']) ?>
+                                    </span>
+                                    <?php if (!empty($m['status_keanggotaan'])): ?>
+                                        <br><small class="text-muted"><?= htmlspecialchars($m['status_keanggotaan']) ?></small>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-<?= $m['status_akun'] === 'aktif' ? 'success' : 'danger' ?> status-badge">
+                                        <?= ucfirst($m['status_akun']) ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <!-- Edit Pendaftaran -->
+                                    <button type="button" class="btn btn-sm btn-outline-primary mb-1" data-bs-toggle="modal" data-bs-target="#editModal<?= $m['id_pendaftaran'] ?>">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <!-- Ubah Password -->
+                                    <button type="button" class="btn btn-sm btn-outline-secondary mb-1" data-bs-toggle="modal" data-bs-target="#passModal<?= $m['id'] ?>">
+                                        <i class="fas fa-key"></i>
+                                    </button>
+                                    <!-- Nonaktifkan -->
+                                    <?php if ($m['status_akun'] === 'aktif'): ?>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Nonaktifkan akun ini?')">
+                                            <input type="hidden" name="id_mahasiswa" value="<?= $m['id'] ?>">
+                                            <button type="submit" name="nonaktifkan" class="btn btn-sm btn-outline-danger mb-1">
+                                                <i class="fas fa-ban"></i>
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
 
-            <?php if (isset($_SESSION['flash_message'])): ?>
-                <div class="alert alert-<?= $_SESSION['flash_type'] ?> alert-dismissible fade show" role="alert">
-                    <?= $_SESSION['flash_message']; unset($_SESSION['flash_message']); unset($_SESSION['flash_type']); ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            <?php endif; ?>
-
-            <!-- FILTER SECTION -->
-            <div class="filter-section mb-4">
-                <form method="GET" class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label">Filter UKM</label>
-                        <select name="filter_ukm" class="form-select">
-                            <option value="">— Semua UKM —</option>
-                            <?php foreach ($all_ukm as $ukm): ?>
-                                <option value="<?= $ukm['id'] ?>" <?= ($filter_ukm == $ukm['id']) ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($ukm['nama_ukm']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Status Pendaftaran</label>
-                        <select name="filter_status" class="form-select">
-                            <option value="">— Semua Status —</option>
-                            <option value="menunggu" <?= ($filter_status === 'menunggu') ? 'selected' : '' ?>>Menunggu</option>
-                            <option value="diterima" <?= ($filter_status === 'diterima') ? 'selected' : '' ?>>Diterima</option>
-                            <option value="ditolak" <?= ($filter_status === 'ditolak') ? 'selected' : '' ?>>Ditolak</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Urutkan Jurusan</label>
-                        <select name="sort_jurusan" class="form-select">
-                            <option value="asc" <?= ($sort_jurusan === 'asc') ? 'selected' : '' ?>>A → Z</option>
-                            <option value="desc" <?= ($sort_jurusan === 'desc') ? 'selected' : '' ?>>Z → A</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary me-2">
-                            <i class="fas fa-filter"></i> Terapkan
-                        </button>
-                        <a href="kelola_mahasiswa.php" class="btn btn-outline-secondary">
-                            <i class="fas fa-undo"></i> Reset
-                        </a>
-                    </div>
-                </form>
-            </div>
-
-            <div class="card card-custom">
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>ID</th>
-                                    <th>NIM</th>
-                                    <th>Nama</th>
-                                    <th>Jurusan</th>
-                                    <th>Email</th>
-                                    <th>UKM & Status</th>
-                                    <th>Status Akun</th>
-                                    <th>Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (empty($mahasiswa_list)): ?>
-                                    <tr>
-                                        <td colspan="8" class="text-center text-muted">Tidak ada data sesuai filter.</td>
-                                    </tr>
-                                <?php else: ?>
-                                    <?php foreach ($mahasiswa_list as $m): ?>
-                                        <tr>
-                                            <td><?= $m['id'] ?></td>
-                                            <td><?= htmlspecialchars($m['nim']) ?></td>
-                                            <td><?= htmlspecialchars($m['nama']) ?></td>
-                                            <td><?= htmlspecialchars($m['jurusan'] ?? '—') ?></td>
-                                            <td><?= htmlspecialchars($m['email']) ?></td>
-                                            <td>
-                                                <span class="fw-bold"><?= htmlspecialchars($m['nama_ukm']) ?></span>
-                                                <br>
-                                                <span class="badge bg-<?= 
-                                                    $m['status_pendaftaran'] === 'diterima' ? 'success' : 
-                                                    ($m['status_pendaftaran'] === 'ditolak' ? 'danger' : 'warning')
-                                                ?> status-badge">
-                                                    <?= ucfirst($m['status_pendaftaran']) ?>
-                                                </span>
-                                                <?php if (!empty($m['status_keanggotaan'])): ?>
-                                                    <br><small class="text-muted"><?= htmlspecialchars($m['status_keanggotaan']) ?></small>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-<?= $m['status_akun'] === 'aktif' ? 'success' : 'danger' ?> status-badge">
-                                                    <?= ucfirst($m['status_akun']) ?>
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <!-- Edit Pendaftaran -->
-                                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal<?= $m['id_pendaftaran'] ?>">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <!-- Ubah Password -->
-                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#passModal<?= $m['id'] ?>">
-                                                    <i class="fas fa-key"></i>
-                                                </button>
-                                                <!-- Nonaktifkan -->
-                                                <?php if ($m['status_akun'] === 'aktif'): ?>
-                                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Nonaktifkan akun ini?')">
-                                                        <input type="hidden" name="id_mahasiswa" value="<?= $m['id'] ?>">
-                                                        <button type="submit" name="nonaktifkan" class="btn btn-sm btn-outline-danger">
-                                                            <i class="fas fa-ban"></i>
-                                                        </button>
-                                                    </form>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-
-                                        <!-- Modal Edit Pendaftaran -->
-                                        <div class="modal fade" id="editModal<?= $m['id_pendaftaran'] ?>" tabindex="-1">
-                                            <div class="modal-dialog">
-                                                <div class="modal-content">
-                                                    <div class="modal-header">
-                                                        <h5 class="modal-title">Edit Pendaftaran: <?= htmlspecialchars($m['nama']) ?></h5>
-                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                                    </div>
-                                                    <form method="POST">
-                                                        <div class="modal-body">
-                                                            <input type="hidden" name="id_pendaftaran" value="<?= $m['id_pendaftaran'] ?>">
-                                                            <div class="mb-3">
-                                                                <label>UKM</label>
-                                                                <select name="ukm_id" class="form-select">
-                                                                    <option value="">— Pilih UKM —</option>
-                                                                    <?php foreach ($all_ukm as $ukm): ?>
-                                                                        <option value="<?= $ukm['id'] ?>" <?= ($ukm['id'] == $m['ukm_id']) ? 'selected' : '' ?>>
-                                                                            <?= htmlspecialchars($ukm['nama_ukm']) ?>
-                                                                        </option>
-                                                                    <?php endforeach; ?>
-                                                                </select>
-                                                            </div>
-                                                            <div class="mb-3">
-                                                                <label>Status Pendaftaran</label>
-                                                                <select name="status" class="form-select">
-                                                                    <option value="menunggu" <?= ($m['status_pendaftaran'] === 'menunggu') ? 'selected' : '' ?>>Menunggu</option>
-                                                                    <option value="diterima" <?= ($m['status_pendaftaran'] === 'diterima') ? 'selected' : '' ?>>Diterima</option>
-                                                                    <option value="ditolak" <?= ($m['status_pendaftaran'] === 'ditolak') ? 'selected' : '' ?>>Ditolak</option>
-                                                                </select>
-                                                            </div>
-                                                        </div>
-                                                        <div class="modal-footer">
-                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                                                            <button type="submit" name="edit_pendaftaran" class="btn btn-primary">Simpan</button>
-                                                        </div>
-                                                    </form>
+                            <!-- Modal Edit Pendaftaran -->
+                            <div class="modal fade" id="editModal<?= $m['id_pendaftaran'] ?>" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Edit Pendaftaran: <?= htmlspecialchars($m['nama']) ?></h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form method="POST">
+                                            <div class="modal-body">
+                                                <input type="hidden" name="id_pendaftaran" value="<?= $m['id_pendaftaran'] ?>">
+                                                <div class="mb-3">
+                                                    <label>UKM</label>
+                                                    <select name="ukm_id" class="form-select">
+                                                        <option value="">— Pilih UKM —</option>
+                                                        <?php foreach ($all_ukm as $ukm): ?>
+                                                            <option value="<?= $ukm['id'] ?>" <?= ($ukm['id'] == $m['ukm_id']) ? 'selected' : '' ?>>
+                                                                <?= htmlspecialchars($ukm['nama_ukm']) ?>
+                                                            </option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label>Status Pendaftaran</label>
+                                                    <select name="status" class="form-select">
+                                                        <option value="menunggu" <?= ($m['status_pendaftaran'] === 'menunggu') ? 'selected' : '' ?>>Menunggu</option>
+                                                        <option value="diterima" <?= ($m['status_pendaftaran'] === 'diterima') ? 'selected' : '' ?>>Diterima</option>
+                                                        <option value="ditolak" <?= ($m['status_pendaftaran'] === 'ditolak') ? 'selected' : '' ?>>Ditolak</option>
+                                                    </select>
                                                 </div>
                                             </div>
-                                        </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                                                <button type="submit" name="edit_pendaftaran" class="btn btn-primary">Simpan</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
 
-                                        <!-- Modal Ubah Password -->
-                                        <div class="modal fade" id="passModal<?= $m['id'] ?>" tabindex="-1">
-                                            <div class="modal-dialog">
-                                                <div class="modal-content">
-                                                    <div class="modal-header">
-                                                        <h5 class="modal-title">Ubah Password: <?= htmlspecialchars($m['nama']) ?></h5>
-                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                                    </div>
-                                                    <form method="POST">
-                                                        <div class="modal-body">
-                                                            <input type="hidden" name="id_mahasiswa" value="<?= $m['id'] ?>">
-                                                            <div class="mb-3">
-                                                                <label>Password Baru (min. 6 karakter)</label>
-                                                                <input type="password" name="password_baru" class="form-control" required minlength="6">
-                                                            </div>
-                                                        </div>
-                                                        <div class="modal-footer">
-                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                                                            <button type="submit" name="ubah_password" class="btn btn-warning text-white">Ubah Password</button>
-                                                        </div>
-                                                    </form>
+                            <!-- Modal Ubah Password -->
+                            <div class="modal fade" id="passModal<?= $m['id'] ?>" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Ubah Password: <?= htmlspecialchars($m['nama']) ?></h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form method="POST">
+                                            <div class="modal-body">
+                                                <input type="hidden" name="id_mahasiswa" value="<?= $m['id'] ?>">
+                                                <div class="mb-3">
+                                                    <label>Password Baru (min. 6 karakter)</label>
+                                                    <input type="password" name="password_baru" class="form-control" required minlength="6">
                                                 </div>
                                             </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                                                <button type="submit" name="ubah_password" class="btn btn-warning text-white">Ubah Password</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+<?php
+// Extra CSS untuk styling khusus halaman ini
+$extra_css = '
+<style>
+    .card-custom {
+        border-radius: 15px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    }
+    .status-badge {
+        font-size: 0.85em;
+        padding: 0.35em 0.5em;
+    }
+    .filter-section {
+        background: #fff;
+        padding: 16px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+</style>
+';
+
+// Simpan content ke variable
+$content = ob_get_clean();
+
+// Include layout
+include 'layout.php';
+?>
